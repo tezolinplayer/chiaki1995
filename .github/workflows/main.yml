@@ -62,15 +62,21 @@ jobs:
 
     - name: Prepare Artifacts (Gather DLLs)
       run: |
+        # Daniel Mod: Criando atalho para o qmake que o windeployqt procura
+        ln -s /mingw64/bin/qmake-qt5.exe /mingw64/bin/qmake.exe || true
         export PATH="/mingw64/bin:$PATH"
+        
         cd build
         mkdir release_package
         cp gui/chiaki.exe release_package/
         
-        # Correção para localizar o qmake corretamente
+        # Executa o deploy (agora com o qmake visível)
         /mingw64/bin/windeployqt-qt5 --release --no-translations --no-compiler-runtime release_package/chiaki.exe
         
-        # DLLs manuais para garantir que nada falte no Windows do usuário
+        # Cópia manual reforçada (O "seguro" para o seu Windows Xeon/GTX 680)
+        cp /mingw64/bin/Qt5Core.dll release_package/ || true
+        cp /mingw64/bin/Qt5Gui.dll release_package/ || true
+        cp /mingw64/bin/Qt5Widgets.dll release_package/ || true
         cp /mingw64/bin/SDL2.dll release_package/ || true
         cp /mingw64/bin/libopus-0.dll release_package/ || true
         cp /mingw64/bin/libhidapi-0.dll release_package/ || true
@@ -84,6 +90,13 @@ jobs:
         cp /mingw64/bin/libwinpthread-1.dll release_package/ || true
         cp /mingw64/bin/libgcc_s_seh-1.dll release_package/ || true
         cp /mingw64/bin/libstdc++-6.dll release_package/ || true
+        cp /mingw64/bin/libpcre2-16-0.dll release_package/ || true
+        cp /mingw64/bin/libdouble-conversion.dll release_package/ || true
+        cp /mingw64/bin/libicuin*.dll release_package/ || true
+        cp /mingw64/bin/libicuuc*.dll release_package/ || true
+        cp /mingw64/bin/libicudt*.dll release_package/ || true
+        cp /mingw64/bin/zlib1.dll release_package/ || true
+        cp /mingw64/bin/libzstd.dll release_package/ || true
 
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
