@@ -62,7 +62,7 @@ jobs:
 
     - name: Prepare Artifacts (Gather DLLs)
       run: |
-        # Daniel Mod: Criando atalho para o qmake que o windeployqt procura
+        # Cria link para qmake e define o PATH
         ln -s /mingw64/bin/qmake-qt5.exe /mingw64/bin/qmake.exe || true
         export PATH="/mingw64/bin:$PATH"
         
@@ -70,13 +70,15 @@ jobs:
         mkdir release_package
         cp gui/chiaki.exe release_package/
         
-        # Executa o deploy (agora com o qmake visível)
-        /mingw64/bin/windeployqt-qt5 --release --no-translations --no-compiler-runtime release_package/chiaki.exe
+        # Daniel Mod: Ignorando OpenGL/Angle para evitar o erro de arquivo faltando
+        /mingw64/bin/windeployqt-qt5 --release --no-translations --no-compiler-runtime --no-opengl --no-angle release_package/chiaki.exe || true
         
-        # Cópia manual reforçada (O "seguro" para o seu Windows Xeon/GTX 680)
+        # Cópia manual de segurança para rodar no seu PC Xeon/GTX 680
         cp /mingw64/bin/Qt5Core.dll release_package/ || true
         cp /mingw64/bin/Qt5Gui.dll release_package/ || true
         cp /mingw64/bin/Qt5Widgets.dll release_package/ || true
+        cp /mingw64/bin/Qt5Multimedia.dll release_package/ || true
+        cp /mingw64/bin/Qt5Network.dll release_package/ || true
         cp /mingw64/bin/SDL2.dll release_package/ || true
         cp /mingw64/bin/libopus-0.dll release_package/ || true
         cp /mingw64/bin/libhidapi-0.dll release_package/ || true
