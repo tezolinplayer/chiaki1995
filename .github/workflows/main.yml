@@ -42,20 +42,11 @@ jobs:
 
     - name: Patch Code and CMake
       run: |
-        # 1. Ajusta versões do CMake
         sed -i 's/cmake_minimum_required(VERSION .*/cmake_minimum_required(VERSION 3.10)/' CMakeLists.txt
         sed -i 's/cmake_minimum_required(VERSION .*/cmake_minimum_required(VERSION 3.10)/' third-party/nanopb/CMakeLists.txt
-        
-        # 2. Corrige erro de instalação do Nanopb
         sed -i '/install(FILES.*DESTINATION.*)/d' third-party/nanopb/CMakeLists.txt
-        
-        # 3. Corrige falta de parênteses em ctrl.c
         sed -i 's/WSAGetLastError;/WSAGetLastError();/g' lib/src/ctrl.c
-        
-        # 4. Corrige cast de ponteiro em stoppipe.c
         sed -i 's/&sockerr,/(char*)\&sockerr,/g' lib/src/stoppipe.c
-        
-        # 5. Remove função removida no FFmpeg novo
         sed -i '/avcodec_close(decoder->codec_context);/d' lib/src/ffmpegdecoder.c
 
     - name: Configure CMake
@@ -71,13 +62,15 @@ jobs:
 
     - name: Prepare Artifacts (Gather DLLs)
       run: |
+        export PATH="/mingw64/bin:$PATH"
         cd build
         mkdir release_package
         cp gui/chiaki.exe release_package/
-        # CORREÇÃO FINAL: Removido --compiler-runtime para evitar o erro 1
-        /mingw64/bin/windeployqt-qt5 --release --no-translations release_package/chiaki.exe
         
-        # DLLs essenciais do MSYS2 (As cópias manuais garantem o funcionamento no seu Windows)
+        # Correção para localizar o qmake corretamente
+        /mingw64/bin/windeployqt-qt5 --release --no-translations --no-compiler-runtime release_package/chiaki.exe
+        
+        # DLLs manuais para garantir que nada falte no Windows do usuário
         cp /mingw64/bin/SDL2.dll release_package/ || true
         cp /mingw64/bin/libopus-0.dll release_package/ || true
         cp /mingw64/bin/libhidapi-0.dll release_package/ || true
