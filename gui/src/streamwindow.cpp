@@ -2,7 +2,7 @@
 
 #include <streamwindow.h>
 #include <streamsession.h>
-#include <avopenglwidget.h>
+// #include <avopenglwidget.h> // DANIEL MOD: Não precisamos mais disso
 #include <loginpindialog.h>
 #include <settings.h>
 
@@ -16,7 +16,7 @@ StreamWindow::StreamWindow(const StreamSessionConnectInfo &connect_info, QWidget
 	connect_info(connect_info)
 {
 	setAttribute(Qt::WA_DeleteOnClose);
-	setWindowTitle(qApp->applicationName() + " | Stream");
+	setWindowTitle(qApp->applicationName() + " | Stream (GHOST MODE)"); // Mudei o título pra você saber que funcionou
 		
 	session = nullptr;
 	av_widget = nullptr;
@@ -36,7 +36,7 @@ StreamWindow::StreamWindow(const StreamSessionConnectInfo &connect_info, QWidget
 
 StreamWindow::~StreamWindow()
 {
-	// make sure av_widget is always deleted before the session
+	// DANIEL MOD: av_widget será sempre nulo agora, mas é seguro deletar nullptr
 	delete av_widget;
 }
 
@@ -47,18 +47,20 @@ void StreamWindow::Init()
 	connect(session, &StreamSession::SessionQuit, this, &StreamWindow::SessionQuit);
 	connect(session, &StreamSession::LoginPINRequested, this, &StreamWindow::LoginPINRequested);
 
-	if(session->GetFfmpegDecoder())
-	{
-		av_widget = new AVOpenGLWidget(session, this);
-		setCentralWidget(av_widget);
-	}
-	else
-	{
-		QWidget *bg_widget = new QWidget(this);
-		bg_widget->setStyleSheet("background-color: black;");
-		setCentralWidget(bg_widget);
-	}
-
+	// ------------------------------------------------------------------
+	// MODIFICAÇÃO DANIEL: REMOÇÃO DA RENDERIZAÇÃO
+	// ------------------------------------------------------------------
+	// Originalmente aqui ele criava o AVOpenGLWidget (pesado).
+	// Agora forçamos sempre o modo "sem vídeo" (tela preta leve).
+	
+	QWidget *bg_widget = new QWidget(this);
+	bg_widget->setStyleSheet("background-color: black;"); // Tela preta leve
+	setCentralWidget(bg_widget);
+	
+	// OBSERVAÇÃO IMPORTANTE:
+	// O av_widget fica NULL. Isso impede qualquer chamada OpenGL.
+	
+	// Mantemos o teclado capturado para seus scripts funcionarem
 	grabKeyboard();
 
 	session->Start();
@@ -68,7 +70,9 @@ void StreamWindow::Init()
 	addAction(fullscreen_action);
 	connect(fullscreen_action, &QAction::triggered, this, &StreamWindow::ToggleFullscreen);
 
-	resize(connect_info.video_profile.width, connect_info.video_profile.height);
+	// DANIEL MOD: Forçar janela pequena para economizar renderização do Windows
+	// Em vez de abrir em 1080p/4K, abrimos pequeno.
+	resize(480, 270); 
 	show();
 }
 
@@ -113,19 +117,9 @@ void StreamWindow::closeEvent(QCloseEvent *event)
 			switch(connect_info.settings->GetDisconnectAction())
 			{
 				case DisconnectAction::Ask: {
-					auto res = QMessageBox::question(this, tr("Disconnect Session"), tr("Do you want the Console to go into sleep mode?"),
-							QMessageBox::Yes | QMessageBox::No | QMessageBox::Cancel);
-					switch(res)
-					{
-						case QMessageBox::Yes:
-							sleep = true;
-							break;
-						case QMessageBox::Cancel:
-							event->ignore();
-							return;
-						default:
-							break;
-					}
+					// DANIEL MOD: Removido a pergunta ao fechar para ser mais rápido.
+					// Se fechar a janela, desconecta direto sem perguntar.
+					sleep = false; 
 					break;
 				}
 				case DisconnectAction::AlwaysSleep:
@@ -179,38 +173,34 @@ void StreamWindow::ToggleFullscreen()
 	else
 	{
 		showFullScreen();
-		if(av_widget)
-			av_widget->HideMouse();
+		// DANIEL MOD: Removemos a chamada av_widget->HideMouse()
+		// pois o widget não existe mais.
 	}
 }
 
 void StreamWindow::resizeEvent(QResizeEvent *event)
 {
-	UpdateVideoTransform();
+	// DANIEL MOD: Não atualizamos transformação de vídeo pois não tem vídeo
+	// UpdateVideoTransform(); 
 	QMainWindow::resizeEvent(event);
 }
 
 void StreamWindow::moveEvent(QMoveEvent *event)
 {
-	UpdateVideoTransform();
+	// DANIEL MOD: Idem acima
+	// UpdateVideoTransform();
 	QMainWindow::moveEvent(event);
 }
 
 void StreamWindow::changeEvent(QEvent *event)
 {
 	if(event->type() == QEvent::ActivationChange)
-		UpdateVideoTransform();
+		// UpdateVideoTransform();
 	QMainWindow::changeEvent(event);
 }
 
 void StreamWindow::UpdateVideoTransform()
 {
-#if CHIAKI_LIB_ENABLE_PI_DECODER
-	ChiakiPiDecoder *pi_decoder = session->GetPiDecoder();
-	if(pi_decoder)
-	{
-		QRect r = geometry();
-		chiaki_pi_decoder_set_params(pi_decoder, r.x(), r.y(), r.width(), r.height(), isActiveWindow());
-	}
-#endif
+	// DANIEL MOD: Função esvaziada.
+	// Não calculamos geometria de vídeo porque não existe vídeo.
 }
