@@ -35,9 +35,9 @@ jobs:
           mingw-w64-x86_64-qt6-multimedia
           mingw-w64-x86_64-ffmpeg
           mingw-w64-x86_64-openssl
-          mingw-w64-x86_64-sdl2
+          mingw-w64-x86_64-SDL2
           mingw-w64-x86_64-protobuf
-          mingw-w64-x86_64-libopus
+          mingw-w64-x86_64-opus
           mingw-w64-x86_64-hidapi
 
     - name: Configure CMake
@@ -57,8 +57,27 @@ jobs:
         mkdir release_package
         cp gui/chiaki.exe release_package/
         windeployqt --release --compiler-runtime release_package/chiaki.exe
-        # Às vezes o windeployqt esquece algumas DLLs do FFmpeg, copiamos manualmente se precisar
-        # Mas para o teste inicial, vamos confiar no deploy
+        # Copia manual de DLLs que as vezes o windeployqt esquece
+        cp /mingw64/bin/libbz2-1.dll release_package/ || true
+        cp /mingw64/bin/libbrotlicommon.dll release_package/ || true
+        cp /mingw64/bin/libbrotlidec.dll release_package/ || true
+        cp /mingw64/bin/libfreetype-6.dll release_package/ || true
+        cp /mingw64/bin/libglib-2.0-0.dll release_package/ || true
+        cp /mingw64/bin/libgraphite2.dll release_package/ || true
+        cp /mingw64/bin/libharfbuzz-0.dll release_package/ || true
+        cp /mingw64/bin/libiconv-2.dll release_package/ || true
+        cp /mingw64/bin/libintl-8.dll release_package/ || true
+        cp /mingw64/bin/libpcre2-16-0.dll release_package/ || true
+        cp /mingw64/bin/libpng16-16.dll release_package/ || true
+        cp /mingw64/bin/zlib1.dll release_package/ || true
+        cp /mingw64/bin/libzstd.dll release_package/ || true
+        cp /mingw64/bin/SDL2.dll release_package/ || true
+        cp /mingw64/bin/libopus-0.dll release_package/ || true
+        cp /mingw64/bin/libhidapi-0.dll release_package/ || true
+        cp /mingw64/bin/avcodec-*.dll release_package/ || true
+        cp /mingw64/bin/avutil-*.dll release_package/ || true
+        cp /mingw64/bin/swresample-*.dll release_package/ || true
+        cp /mingw64/bin/swscale-*.dll release_package/ || true
 
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
