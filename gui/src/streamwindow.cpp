@@ -2,7 +2,7 @@
 
 #include <streamwindow.h>
 #include <streamsession.h>
-// #include <avopenglwidget.h> // DANIEL MOD: Não precisamos mais disso
+#include <avopenglwidget.h> // CORREÇÃO: Restauramos isso para o 'delete' funcionar
 #include <loginpindialog.h>
 #include <settings.h>
 
@@ -16,7 +16,7 @@ StreamWindow::StreamWindow(const StreamSessionConnectInfo &connect_info, QWidget
 	connect_info(connect_info)
 {
 	setAttribute(Qt::WA_DeleteOnClose);
-	setWindowTitle(qApp->applicationName() + " | Stream (GHOST MODE)"); // Mudei o título pra você saber que funcionou
+	setWindowTitle(qApp->applicationName() + " | Stream (GHOST MODE)");
 		
 	session = nullptr;
 	av_widget = nullptr;
@@ -36,8 +36,10 @@ StreamWindow::StreamWindow(const StreamSessionConnectInfo &connect_info, QWidget
 
 StreamWindow::~StreamWindow()
 {
-	// DANIEL MOD: av_widget será sempre nulo agora, mas é seguro deletar nullptr
-	delete av_widget;
+    // Verificamos se existe antes de deletar
+	if (av_widget) {
+	    delete av_widget;
+	}
 }
 
 void StreamWindow::Init()
@@ -47,20 +49,15 @@ void StreamWindow::Init()
 	connect(session, &StreamSession::SessionQuit, this, &StreamWindow::SessionQuit);
 	connect(session, &StreamSession::LoginPINRequested, this, &StreamWindow::LoginPINRequested);
 
-	// ------------------------------------------------------------------
-	// MODIFICAÇÃO DANIEL: REMOÇÃO DA RENDERIZAÇÃO
-	// ------------------------------------------------------------------
-	// Originalmente aqui ele criava o AVOpenGLWidget (pesado).
-	// Agora forçamos sempre o modo "sem vídeo" (tela preta leve).
-	
+	// --- MODO GHOST ATIVADO ---
+	// Em vez de carregar o peso do vídeo, carregamos uma tela preta simples.
 	QWidget *bg_widget = new QWidget(this);
-	bg_widget->setStyleSheet("background-color: black;"); // Tela preta leve
+	bg_widget->setStyleSheet("background-color: black;");
 	setCentralWidget(bg_widget);
 	
-	// OBSERVAÇÃO IMPORTANTE:
-	// O av_widget fica NULL. Isso impede qualquer chamada OpenGL.
+	// Mantemos o av_widget como nulo para garantir que nada de vídeo seja processado
+	av_widget = nullptr; 
 	
-	// Mantemos o teclado capturado para seus scripts funcionarem
 	grabKeyboard();
 
 	session->Start();
@@ -70,8 +67,7 @@ void StreamWindow::Init()
 	addAction(fullscreen_action);
 	connect(fullscreen_action, &QAction::triggered, this, &StreamWindow::ToggleFullscreen);
 
-	// DANIEL MOD: Forçar janela pequena para economizar renderização do Windows
-	// Em vez de abrir em 1080p/4K, abrimos pequeno.
+	// Janela pequena para não gastar DWM do Windows
 	resize(480, 270); 
 	show();
 }
@@ -103,7 +99,6 @@ void StreamWindow::mouseReleaseEvent(QMouseEvent *event)
 void StreamWindow::mouseDoubleClickEvent(QMouseEvent *event)
 {
 	ToggleFullscreen();
-
 	QMainWindow::mouseDoubleClickEvent(event);
 }
 
@@ -117,8 +112,6 @@ void StreamWindow::closeEvent(QCloseEvent *event)
 			switch(connect_info.settings->GetDisconnectAction())
 			{
 				case DisconnectAction::Ask: {
-					// DANIEL MOD: Removido a pergunta ao fechar para ser mais rápido.
-					// Se fechar a janela, desconecta direto sem perguntar.
 					sleep = false; 
 					break;
 				}
@@ -173,34 +166,25 @@ void StreamWindow::ToggleFullscreen()
 	else
 	{
 		showFullScreen();
-		// DANIEL MOD: Removemos a chamada av_widget->HideMouse()
-		// pois o widget não existe mais.
 	}
 }
 
 void StreamWindow::resizeEvent(QResizeEvent *event)
 {
-	// DANIEL MOD: Não atualizamos transformação de vídeo pois não tem vídeo
-	// UpdateVideoTransform(); 
 	QMainWindow::resizeEvent(event);
 }
 
 void StreamWindow::moveEvent(QMoveEvent *event)
 {
-	// DANIEL MOD: Idem acima
-	// UpdateVideoTransform();
 	QMainWindow::moveEvent(event);
 }
 
 void StreamWindow::changeEvent(QEvent *event)
 {
-	if(event->type() == QEvent::ActivationChange)
-		// UpdateVideoTransform();
 	QMainWindow::changeEvent(event);
 }
 
 void StreamWindow::UpdateVideoTransform()
 {
-	// DANIEL MOD: Função esvaziada.
-	// Não calculamos geometria de vídeo porque não existe vídeo.
+    // Função vazia: sem vídeo, sem transformação.
 }
