@@ -1,0 +1,67 @@
+name: Build Chiaki Ghost Windows
+
+on:
+  push:
+    branches: [ "master", "main" ]
+  pull_request:
+    branches: [ "master", "main" ]
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Setup MSYS2
+      uses: msys2/setup-msys2@v2
+      with:
+        msystem: MINGW64
+        update: true
+        install: >-
+          git
+          base-devel
+          mingw-w64-x86_64-toolchain
+          mingw-w64-x86_64-cmake
+          mingw-w64-x86_64-ninja
+          mingw-w64-x86_64-qt6-base
+          mingw-w64-x86_64-qt6-svg
+          mingw-w64-x86_64-qt6-multimedia
+          mingw-w64-x86_64-ffmpeg
+          mingw-w64-x86_64-openssl
+          mingw-w64-x86_64-sdl2
+          mingw-w64-x86_64-protobuf
+          mingw-w64-x86_64-libopus
+          mingw-w64-x86_64-hidapi
+
+    - name: Configure CMake
+      run: |
+        mkdir build
+        cd build
+        cmake -G Ninja -DCMAKE_BUILD_TYPE=Release ..
+
+    - name: Build
+      run: |
+        cd build
+        cmake --build .
+
+    - name: Prepare Artifacts (Gather DLLs)
+      run: |
+        cd build
+        mkdir release_package
+        cp gui/chiaki.exe release_package/
+        windeployqt --release --compiler-runtime release_package/chiaki.exe
+        # Às vezes o windeployqt esquece algumas DLLs do FFmpeg, copiamos manualmente se precisar
+        # Mas para o teste inicial, vamos confiar no deploy
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: Chiaki-Ghost-Windows
+        path: build/release_package/
