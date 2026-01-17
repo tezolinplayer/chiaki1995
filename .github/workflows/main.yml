@@ -40,6 +40,11 @@ jobs:
           mingw-w64-x86_64-opus
           mingw-w64-x86_64-hidapi
 
+    - name: Fix Nanopb CMake Version
+      run: |
+        # DANIEL MOD: Este comando corrige o erro de versão dentro da pasta nanopb automaticamente
+        sed -i 's/cmake_minimum_required(VERSION .*/cmake_minimum_required(VERSION 3.5)/' third-party/nanopb/CMakeLists.txt
+
     - name: Configure CMake
       run: |
         mkdir build
@@ -57,7 +62,7 @@ jobs:
         mkdir release_package
         cp gui/chiaki.exe release_package/
         windeployqt --release --compiler-runtime release_package/chiaki.exe
-        # Copia manual de DLLs que as vezes o windeployqt esquece
+        # Copia manual de DLLs de segurança
         cp /mingw64/bin/libbz2-1.dll release_package/ || true
         cp /mingw64/bin/libbrotlicommon.dll release_package/ || true
         cp /mingw64/bin/libbrotlidec.dll release_package/ || true
