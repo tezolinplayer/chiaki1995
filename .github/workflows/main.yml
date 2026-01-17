@@ -40,19 +40,23 @@ jobs:
           mingw-w64-x86_64-hidapi
           mingw-w64-x86_64-python-setuptools
 
-    - name: Fix CMake Versions and Nanopb
+    - name: Patch Code and CMake
       run: |
-        # Daniel Mod: Força versão 3.10 para compatibilidade
+        # 1. Ajusta versões do CMake para evitar deprecation errors
         sed -i 's/cmake_minimum_required(VERSION .*/cmake_minimum_required(VERSION 3.10)/' CMakeLists.txt
         sed -i 's/cmake_minimum_required(VERSION .*/cmake_minimum_required(VERSION 3.10)/' third-party/nanopb/CMakeLists.txt
-        # Remove a linha de instalação do Nanopb que causa erro de destino
+        
+        # 2. Remove erro de instalação do Nanopb
         sed -i '/install(FILES.*DESTINATION.*)/d' third-party/nanopb/CMakeLists.txt
+        
+        # 3. CORREÇÃO DO ERRO ATUAL (ctrl.c): Adiciona parênteses em WSAGetLastError
+        # Isso resolve o erro: initialization of 'int' from 'int (*)(void)'
+        sed -i 's/WSAGetLastError;/WSAGetLastError();/g' lib/src/ctrl.c
 
     - name: Configure CMake
       run: |
         mkdir build
         cd build
-        # Desativamos testes e CLI para acelerar o build e evitar erros extras
         cmake -G Ninja -DCMAKE_BUILD_TYPE=Release -DCHIAKI_ENABLE_TESTS=OFF -DCHIAKI_ENABLE_CLI=OFF ..
 
     - name: Build
@@ -65,9 +69,8 @@ jobs:
         cd build
         mkdir release_package
         cp gui/chiaki.exe release_package/
-        # windeployqt para organizar as dependências do Qt5
         windeployqt --release --compiler-runtime release_package/chiaki.exe
-        # DLLs essenciais que o windeploy as vezes ignora no MSYS2
+        # Copia manual de DLLs que o windeploy as vezes ignora no ambiente MSYS2
         cp /mingw64/bin/SDL2.dll release_package/ || true
         cp /mingw64/bin/libopus-0.dll release_package/ || true
         cp /mingw64/bin/libhidapi-0.dll release_package/ || true
@@ -78,6 +81,9 @@ jobs:
         cp /mingw64/bin/libcrypto-*.dll release_package/ || true
         cp /mingw64/bin/libssl-*.dll release_package/ || true
         cp /mingw64/bin/libprotobuf-*.dll release_package/ || true
+        cp /mingw64/bin/libwinpthread-1.dll release_package/ || true
+        cp /mingw64/bin/libgcc_s_seh-1.dll release_package/ || true
+        cp /mingw64/bin/libstdc++-6.dll release_package/ || true
 
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
