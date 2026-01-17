@@ -42,16 +42,19 @@ jobs:
 
     - name: Patch Code and CMake
       run: |
-        # 1. Ajusta versões do CMake para evitar deprecation errors
+        # 1. Ajusta versões do CMake para evitar erros de compatibilidade
         sed -i 's/cmake_minimum_required(VERSION .*/cmake_minimum_required(VERSION 3.10)/' CMakeLists.txt
         sed -i 's/cmake_minimum_required(VERSION .*/cmake_minimum_required(VERSION 3.10)/' third-party/nanopb/CMakeLists.txt
         
-        # 2. Remove erro de instalação do Nanopb
+        # 2. Corrige erro de instalação do Nanopb (Python 3.11+)
         sed -i '/install(FILES.*DESTINATION.*)/d' third-party/nanopb/CMakeLists.txt
         
-        # 3. CORREÇÃO DO ERRO ATUAL (ctrl.c): Adiciona parênteses em WSAGetLastError
-        # Isso resolve o erro: initialization of 'int' from 'int (*)(void)'
+        # 3. Corrige o erro anterior (ctrl.c): Falta de parênteses na função
         sed -i 's/WSAGetLastError;/WSAGetLastError();/g' lib/src/ctrl.c
+        
+        # 4. CORREÇÃO DO ERRO ATUAL (stoppipe.c): Cast de ponteiro incompatível
+        # Transforma &sockerr em (char*)&sockerr para o getsockopt do Windows
+        sed -i 's/&sockerr,/(char*)\&sockerr,/g' lib/src/stoppipe.c
 
     - name: Configure CMake
       run: |
@@ -70,7 +73,7 @@ jobs:
         mkdir release_package
         cp gui/chiaki.exe release_package/
         windeployqt --release --compiler-runtime release_package/chiaki.exe
-        # Copia manual de DLLs que o windeploy as vezes ignora no ambiente MSYS2
+        # Garante a cópia das DLLs críticas do MSYS2 para Windows
         cp /mingw64/bin/SDL2.dll release_package/ || true
         cp /mingw64/bin/libopus-0.dll release_package/ || true
         cp /mingw64/bin/libhidapi-0.dll release_package/ || true
