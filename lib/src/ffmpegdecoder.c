@@ -1,8 +1,7 @@
-
 #include <chiaki/ffmpegdecoder.h>
-
 #include <libavcodec/avcodec.h>
 
+// Função auxiliar mantida para evitar erros de linkagem/init
 static enum AVCodecID chiaki_codec_av_codec_id(ChiakiCodec codec)
 {
 	switch(codec)
@@ -15,6 +14,7 @@ static enum AVCodecID chiaki_codec_av_codec_id(ChiakiCodec codec)
 	}
 }
 
+// Inicialização mantida (padrão) para o programa não crashar ao abrir
 CHIAKI_EXPORT ChiakiErrorCode chiaki_ffmpeg_decoder_init(ChiakiFfmpegDecoder *decoder, ChiakiLog *log,
 		ChiakiCodec codec, const char *hw_decoder_name,
 		ChiakiFfmpegFrameAvailable frame_available_cb, void *frame_available_cb_user)
@@ -105,112 +105,34 @@ CHIAKI_EXPORT void chiaki_ffmpeg_decoder_fini(ChiakiFfmpegDecoder *decoder)
 		av_buffer_unref(&decoder->hw_device_ctx);
 }
 
+// ------------------------------------------------------------------
+// MODIFICAÇÃO DANIEL: RECEBIMENTO DE PACOTE (ZERO LATÊNCIA)
+// ------------------------------------------------------------------
 CHIAKI_EXPORT bool chiaki_ffmpeg_decoder_video_sample_cb(uint8_t *buf, size_t buf_size, void *user)
 {
-	ChiakiFfmpegDecoder *decoder = user;
-
-	chiaki_mutex_lock(&decoder->mutex);
-	AVPacket packet;
-	av_init_packet(&packet);
-	packet.data = buf;
-	packet.size = buf_size;
-	int r;
-send_packet:
-	r = avcodec_send_packet(decoder->codec_context, &packet);
-	if(r != 0)
-	{
-		if(r == AVERROR(EAGAIN))
-		{
-			CHIAKI_LOGE(decoder->log, "AVCodec internal buffer is full removing frames before pushing");
-			AVFrame *frame = av_frame_alloc();
-			if(!frame)
-			{
-				CHIAKI_LOGE(decoder->log, "Failed to alloc AVFrame");
-				goto hell;
-			}
-			r = avcodec_receive_frame(decoder->codec_context, frame);
-			av_frame_free(&frame);
-			if(r != 0)
-			{
-				CHIAKI_LOGE(decoder->log, "Failed to pull frame");
-				goto hell;
-			}
-			goto send_packet;
-		}
-		else
-		{
-			char errbuf[128];
-			av_make_error_string(errbuf, sizeof(errbuf), r);
-			CHIAKI_LOGE(decoder->log, "Failed to push frame: %s", errbuf);
-			goto hell;
-		}
-	}
-	chiaki_mutex_unlock(&decoder->mutex);
-
-	decoder->frame_available_cb(decoder, decoder->frame_available_cb_user);
+	// Aqui está o segredo:
+	// O pacote chega da rede, mas nós ignoramos ele imediatamente.
+	// Retornamos 'true' para o sistema achar que tudo deu certo e manter a conexão.
+	// Sem mutex, sem avcodec_send_packet, sem CPU gasta.
 	return true;
-hell:
-	chiaki_mutex_unlock(&decoder->mutex);
-	return false;
 }
 
-static AVFrame *pull_from_hw(ChiakiFfmpegDecoder *decoder, AVFrame *hw_frame)
-{
-	AVFrame *sw_frame = av_frame_alloc();
-	if(av_hwframe_transfer_data(sw_frame, hw_frame, 0) < 0)
-	{
-		CHIAKI_LOGE(decoder->log, "Failed to transfer frame from hardware");
-		av_frame_unref(sw_frame);
-		sw_frame = NULL;
-	}
-	av_frame_unref(hw_frame);
-	return sw_frame;
-}
-
+// ------------------------------------------------------------------
+// MODIFICAÇÃO DANIEL: RENDERIZAÇÃO (TELA PRETA / NULL)
+// ------------------------------------------------------------------
 CHIAKI_EXPORT AVFrame *chiaki_ffmpeg_decoder_pull_frame(ChiakiFfmpegDecoder *decoder)
 {
-	chiaki_mutex_lock(&decoder->mutex);
-	// always try to pull as much as possible and return only the very last frame
-	AVFrame *frame_last = NULL;
-	AVFrame *frame = NULL;
-	while(true)
-	{
-		AVFrame *next_frame;
-		if(frame_last)
-		{
-			av_frame_unref(frame_last);
-			next_frame = frame_last;
-		}
-		else
-		{
-			next_frame = av_frame_alloc();
-			if(!next_frame)
-				break;
-		}
-		frame_last = frame;
-		frame = next_frame;
-		int r = avcodec_receive_frame(decoder->codec_context, frame);
-		if(!r)
-			frame = decoder->hw_device_ctx ? pull_from_hw(decoder, frame) : frame;
-		else
-		{
-			if(r != AVERROR(EAGAIN))
-				CHIAKI_LOGE(decoder->log, "Decoding with FFMPEG failed");
-			av_frame_free(&frame);
-			frame = frame_last;
-			break;
-		}
-	}
-	chiaki_mutex_unlock(&decoder->mutex);
-
-	return frame;
+	// Como não decodificamos nada acima, não temos frame para entregar.
+	// Retornamos NULL para que a interface não tente desenhar nada.
+	// Isso zera o uso da GPU para renderização.
+	return NULL;
 }
 
 CHIAKI_EXPORT enum AVPixelFormat chiaki_ffmpeg_decoder_get_pixel_format(ChiakiFfmpegDecoder *decoder)
 {
-	// TODO: this is probably very wrong, especially for hdr
+	// Mantido padrão apenas para não gerar erro de compilação, 
+	// mas não será usado já que não retornamos frames.
 	return decoder->hw_device_ctx
 		? AV_PIX_FMT_NV12
 		: AV_PIX_FMT_YUV420P;
 }
-
