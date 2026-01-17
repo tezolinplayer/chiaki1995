@@ -74,10 +74,10 @@ jobs:
         cd build
         mkdir release_package
         cp gui/chiaki.exe release_package/
-        # Daniel Mod: Usando o comando correto para Qt5 no MSYS2
-        /mingw64/bin/windeployqt-qt5 --release --compiler-runtime release_package/chiaki.exe
+        # CORREÇÃO FINAL: Removido --compiler-runtime para evitar o erro 1
+        /mingw64/bin/windeployqt-qt5 --release --no-translations release_package/chiaki.exe
         
-        # DLLs essenciais do MSYS2 que precisam acompanhar o executável
+        # DLLs essenciais do MSYS2 (As cópias manuais garantem o funcionamento no seu Windows)
         cp /mingw64/bin/SDL2.dll release_package/ || true
         cp /mingw64/bin/libopus-0.dll release_package/ || true
         cp /mingw64/bin/libhidapi-0.dll release_package/ || true
