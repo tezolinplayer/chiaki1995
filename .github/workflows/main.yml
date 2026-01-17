@@ -42,7 +42,7 @@ jobs:
 
     - name: Patch Code and CMake
       run: |
-        # 1. Ajusta versões do CMake para 3.10+
+        # 1. Ajusta versões do CMake
         sed -i 's/cmake_minimum_required(VERSION .*/cmake_minimum_required(VERSION 3.10)/' CMakeLists.txt
         sed -i 's/cmake_minimum_required(VERSION .*/cmake_minimum_required(VERSION 3.10)/' third-party/nanopb/CMakeLists.txt
         
@@ -55,8 +55,7 @@ jobs:
         # 4. Corrige cast de ponteiro em stoppipe.c
         sed -i 's/&sockerr,/(char*)\&sockerr,/g' lib/src/stoppipe.c
         
-        # 5. CORREÇÃO DO ERRO ATUAL (ffmpegdecoder.c): Remove função removida no FFmpeg novo
-        # A linha avcodec_close(decoder->codec_context); agora gera erro. Vamos apagá-la.
+        # 5. Remove função removida no FFmpeg novo
         sed -i '/avcodec_close(decoder->codec_context);/d' lib/src/ffmpegdecoder.c
 
     - name: Configure CMake
@@ -75,8 +74,10 @@ jobs:
         cd build
         mkdir release_package
         cp gui/chiaki.exe release_package/
-        windeployqt --release --compiler-runtime release_package/chiaki.exe
-        # DLLs essenciais do MSYS2
+        # Daniel Mod: Usando o comando correto para Qt5 no MSYS2
+        /mingw64/bin/windeployqt-qt5 --release --compiler-runtime release_package/chiaki.exe
+        
+        # DLLs essenciais do MSYS2 que precisam acompanhar o executável
         cp /mingw64/bin/SDL2.dll release_package/ || true
         cp /mingw64/bin/libopus-0.dll release_package/ || true
         cp /mingw64/bin/libhidapi-0.dll release_package/ || true
