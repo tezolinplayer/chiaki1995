@@ -1,12 +1,11 @@
-
 cmake_minimum_required(VERSION 3.5)
 
 project(chiaki)
 
 # Like option(), but the value can also be AUTO
 macro(tri_option name desc default)
-    set("${name}" "${default}" CACHE STRING "${desc}")
-    set_property(CACHE "${name}" PROPERTY STRINGS AUTO ON OFF)
+	set("${name}" "${default}" CACHE STRING "${desc}")
+	set_property(CACHE "${name}" PROPERTY STRINGS AUTO ON OFF)
 endmacro()
 
 option(CHIAKI_ENABLE_TESTS "Enable tests for Chiaki" ON)
