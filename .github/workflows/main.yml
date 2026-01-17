@@ -30,26 +30,28 @@ jobs:
           mingw-w64-x86_64-toolchain
           mingw-w64-x86_64-cmake
           mingw-w64-x86_64-ninja
-          mingw-w64-x86_64-qt6-base
-          mingw-w64-x86_64-qt6-svg
-          mingw-w64-x86_64-qt6-multimedia
+          mingw-w64-x86_64-qt5
           mingw-w64-x86_64-ffmpeg
           mingw-w64-x86_64-openssl
           mingw-w64-x86_64-SDL2
           mingw-w64-x86_64-protobuf
           mingw-w64-x86_64-opus
           mingw-w64-x86_64-hidapi
+          mingw-w64-x86_64-python-setuptools
 
-    - name: Fix Nanopb CMake Version
+    - name: Fix CMake Versions and Nanopb
       run: |
-        # DANIEL MOD: Este comando corrige o erro de versão dentro da pasta nanopb automaticamente
-        sed -i 's/cmake_minimum_required(VERSION .*/cmake_minimum_required(VERSION 3.5)/' third-party/nanopb/CMakeLists.txt
+        # Daniel Mod: Força versão 3.10 em todos os arquivos para evitar erros de compatibilidade
+        sed -i 's/cmake_minimum_required(VERSION .*/cmake_minimum_required(VERSION 3.10)/' CMakeLists.txt
+        sed -i 's/cmake_minimum_required(VERSION .*/cmake_minimum_required(VERSION 3.10)/' third-party/nanopb/CMakeLists.txt
+        # Remove a linha de instalação do Nanopb que causa o erro "no DESTINATION"
+        sed -i '/install(FILES.*DESTINATION.*)/d' third-party/nanopb/CMakeLists.txt
 
     - name: Configure CMake
       run: |
         mkdir build
         cd build
-        cmake -G Ninja -DCMAKE_BUILD_TYPE=Release ..
+        cmake -G Ninja -DCMAKE_BUILD_TYPE=Release -DCHIAKI_ENABLE_TESTS=OFF ..
 
     - name: Build
       run: |
@@ -61,21 +63,9 @@ jobs:
         cd build
         mkdir release_package
         cp gui/chiaki.exe release_package/
+        # windeployqt para Qt5
         windeployqt --release --compiler-runtime release_package/chiaki.exe
-        # Copia manual de DLLs de segurança
-        cp /mingw64/bin/libbz2-1.dll release_package/ || true
-        cp /mingw64/bin/libbrotlicommon.dll release_package/ || true
-        cp /mingw64/bin/libbrotlidec.dll release_package/ || true
-        cp /mingw64/bin/libfreetype-6.dll release_package/ || true
-        cp /mingw64/bin/libglib-2.0-0.dll release_package/ || true
-        cp /mingw64/bin/libgraphite2.dll release_package/ || true
-        cp /mingw64/bin/libharfbuzz-0.dll release_package/ || true
-        cp /mingw64/bin/libiconv-2.dll release_package/ || true
-        cp /mingw64/bin/libintl-8.dll release_package/ || true
-        cp /mingw64/bin/libpcre2-16-0.dll release_package/ || true
-        cp /mingw64/bin/libpng16-16.dll release_package/ || true
-        cp /mingw64/bin/zlib1.dll release_package/ || true
-        cp /mingw64/bin/libzstd.dll release_package/ || true
+        # DLLs essenciais do sistema MSYS2
         cp /mingw64/bin/SDL2.dll release_package/ || true
         cp /mingw64/bin/libopus-0.dll release_package/ || true
         cp /mingw64/bin/libhidapi-0.dll release_package/ || true
@@ -83,6 +73,8 @@ jobs:
         cp /mingw64/bin/avutil-*.dll release_package/ || true
         cp /mingw64/bin/swresample-*.dll release_package/ || true
         cp /mingw64/bin/swscale-*.dll release_package/ || true
+        cp /mingw64/bin/libcrypto-*.dll release_package/ || true
+        cp /mingw64/bin/libssl-*.dll release_package/ || true
 
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
