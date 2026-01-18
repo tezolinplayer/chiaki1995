@@ -23,13 +23,15 @@
 #include <QTcpSocket>
 
 // ------------------------------------------------------------------
-// LINKER BRIDGE (DANIEL MOD v4.1)
+// LINKER BRIDGE (DANIEL MOD v4.6)
 // ------------------------------------------------------------------
 extern "C" {
     int recoil_v_global = 0; 
     int recoil_h_global = 0;
     int anti_dz_global = 0;
-    int sticky_power_global = 0;
+    int sticky_power_global = 750;
+    int lock_power_global = 160;   // Inicia em 1.60x
+    int start_delay_global = 2;    // Inicia com 2 ticks de delay
     bool sticky_aim_global = false;
     bool rapid_fire_global = false;
     bool crouch_spam_global = false;
@@ -41,7 +43,7 @@ StreamWindow::StreamWindow(const StreamSessionConnectInfo &connect_info, QWidget
 	connect_info(connect_info)
 {
 	setAttribute(Qt::WA_DeleteOnClose);
-	setWindowTitle(qApp->applicationName() + " | DANIEL GHOST ZEN ELITE v4.1");
+	setWindowTitle(qApp->applicationName() + " | DANIEL GHOST ZEN ELITE v4.6");
 		
 	session = nullptr;
 	av_widget = nullptr;
@@ -96,32 +98,46 @@ void StreamWindow::Init() {
     profileGroup->setLayout(pLayout);
     mainLayout->addWidget(profileGroup);
 
-	// 2. RECOIL E MAGNETISMO
-    QGroupBox *aimGroup = new QGroupBox("RECOIL & MAGNETISMO", this);
+	// 2. RECOIL E MAGNETISMO (XIM MATRIX STYLE)
+    QGroupBox *aimGroup = new QGroupBox("CONTROLE DE RECOIL PERSONALIZADO", this);
     aimGroup->setStyleSheet("border: 1px solid #00FF41;");
-    QVBoxLayout *aimLayout = new QVBoxLayout();
+    QVBoxLayout *aimLayout = new QVBoxLayout(aimGroup);
+    
     label_v = new QLabel("Recoil Vertical: 0", this);
 	slider_v = new QSlider(Qt::Horizontal, this);
 	slider_v->setRange(-150, 150);
-    label_sticky_power = new QLabel("Força Magnetismo: 0", this);
+    
+    label_lock_power = new QLabel("Lock Power (Trava): 1.60x", this);
+    slider_lock_power = new QSlider(Qt::Horizontal, this);
+    slider_lock_power->setRange(100, 250); // 1.0x a 2.5x
+    slider_lock_power->setValue(160);
+
+    label_start_delay = new QLabel("Start Delay: 2 ticks", this);
+    slider_start_delay = new QSlider(Qt::Horizontal, this);
+    slider_start_delay->setRange(0, 10);
+    slider_start_delay->setValue(2);
+
+    label_sticky_power = new QLabel("Força Magnetismo: 750", this);
     slider_sticky_power = new QSlider(Qt::Horizontal, this);
     slider_sticky_power->setRange(0, 2000);
+    slider_sticky_power->setValue(750);
+
     aimLayout->addWidget(label_v); aimLayout->addWidget(slider_v);
+    aimLayout->addWidget(label_lock_power); aimLayout->addWidget(slider_lock_power);
+    aimLayout->addWidget(label_start_delay); aimLayout->addWidget(slider_start_delay);
     aimLayout->addWidget(label_sticky_power); aimLayout->addWidget(slider_sticky_power);
-    aimGroup->setLayout(aimLayout);
     mainLayout->addWidget(aimGroup);
 
 	// 3. MACROS
     QGroupBox *macroGroup = new QGroupBox("MACROS & FUNÇÕES", this);
     macroGroup->setStyleSheet("border: 1px solid #00FF41;");
-    QGridLayout *mLayout = new QGridLayout();
+    QGridLayout *mLayout = new QGridLayout(macroGroup);
     check_crouch_spam = new QCheckBox("CROUCH SPAM", this);
     check_drop_shot = new QCheckBox("DROP SHOT", this);
     check_sticky_aim = new QCheckBox("STICKY AIM", this);
     check_rapid_fire = new QCheckBox("RAPID FIRE", this);
     mLayout->addWidget(check_crouch_spam, 0, 0); mLayout->addWidget(check_drop_shot, 0, 1);
     mLayout->addWidget(check_sticky_aim, 1, 0); mLayout->addWidget(check_rapid_fire, 1, 1);
-    macroGroup->setLayout(mLayout);
     mainLayout->addWidget(macroGroup);
 
 	setCentralWidget(central);
@@ -129,6 +145,15 @@ void StreamWindow::Init() {
 	// --- CONEXÕES ---
 	connect(slider_v, &QSlider::valueChanged, this, [this](int val){ recoil_v_global = val; label_v->setText(QString("Recoil Vertical: %1").arg(val)); });
     connect(slider_sticky_power, &QSlider::valueChanged, this, [this](int val){ sticky_power_global = val; label_sticky_power->setText(QString("Força Magnetismo: %1").arg(val)); });
+    connect(slider_lock_power, &QSlider::valueChanged, this, [this](int val){ 
+        lock_power_global = val; 
+        label_lock_power->setText(QString("Lock Power (Trava): %1x").arg(val/100.0)); 
+    });
+    connect(slider_start_delay, &QSlider::valueChanged, this, [this](int val){ 
+        start_delay_global = val; 
+        label_start_delay->setText(QString("Start Delay: %1 ticks").arg(val)); 
+    });
+
 	connect(check_crouch_spam, &QCheckBox::toggled, this, [](bool checked){ crouch_spam_global = checked; });
     connect(check_drop_shot, &QCheckBox::toggled, this, [](bool checked){ drop_shot_global = checked; });
 	connect(check_sticky_aim, &QCheckBox::toggled, this, [](bool checked){ sticky_aim_global = checked; });
@@ -141,52 +166,40 @@ void StreamWindow::Init() {
     connect(combo_profiles, &QComboBox::currentTextChanged, this, &StreamWindow::LoadProfile);
     connect(btn_save_profile, &QPushButton::clicked, this, [this](){ SaveProfile(combo_profiles->currentText()); });
 
-    // ATALHO F1
-    auto rapidAction = new QAction(this);
-    rapidAction->setShortcut(Qt::Key_F1);
-    addAction(rapidAction);
-    connect(rapidAction, &QAction::triggered, this, [this](){ check_rapid_fire->toggle(); });
-
 	grabKeyboard();
 	session->Start();
     StartWebBridge(); 
     LoadProfile("GENERIC");
-	resize(520, 580); 
+	resize(540, 720); // Aumentado para caber os novos sliders
 	show();
 }
 
-// --- PONTE WEB REFORMULADA (SUPORTE TOTAL AO CELULAR) ---
-void StreamWindow::StartWebBridge() {
-    web_server = new QTcpServer(this);
-    if (web_server->listen(QHostAddress::Any, 8080)) {
-        qDebug() << "Ponte Web ativa em: 192.168.100.2:8080";
-        connect(web_server, &QTcpServer::newConnection, this, &StreamWindow::OnNewWebConnection);
-    }
-}
-
+// --- PONTE WEB REFORMULADA (SUPORTE AOS NOVOS SLIDERS) ---
 void StreamWindow::OnNewWebConnection() {
     QTcpSocket *socket = web_server->nextPendingConnection();
     connect(socket, &QTcpSocket::readyRead, this, [this, socket]() {
         QString request = QString::fromUtf8(socket->readAll());
         
-        // 1. Sliders (Ajuste fino via Touch)
         if (request.contains("SET_STICKY:")) {
-            int val = request.split(":").at(1).split(" ").at(0).toInt();
-            slider_sticky_power->setValue(val);
+            slider_sticky_power->setValue(request.split(":").at(1).split(" ").at(0).toInt());
         }
         else if (request.contains("SET_RECOIL:")) {
-            int val = request.split(":").at(1).split(" ").at(0).toInt();
-            slider_v->setValue(val);
+            slider_v->setValue(request.split(":").at(1).split(" ").at(0).toInt());
         }
-        // 2. Toggles (Macros e Funções)
+        else if (request.contains("SET_LOCK:")) {
+            // Celular manda valor real (ex: 1.60), PC converte para int (160)
+            float val = request.split(":").at(1).split(" ").at(0).toFloat();
+            slider_lock_power->setValue((int)(val * 100));
+        }
+        else if (request.contains("SET_DELAY:")) {
+            slider_start_delay->setValue(request.split(":").at(1).split(" ").at(0).toInt());
+        }
         else if (request.contains("RF:TOGGLE")) check_rapid_fire->toggle();
         else if (request.contains("SA:TOGGLE")) check_sticky_aim->toggle();
         else if (request.contains("CS:TOGGLE")) check_crouch_spam->toggle();
         else if (request.contains("DS:TOGGLE")) check_drop_shot->toggle();
-        // 3. Perfis
         else if (request.contains("PROFILE:")) {
-            QString prof = request.split(":").at(1).split(" ").at(0).trimmed();
-            combo_profiles->setCurrentText(prof);
+            combo_profiles->setCurrentText(request.split(":").at(1).split(" ").at(0).trimmed());
         }
 
         socket->write("HTTP/1.1 200 OK\r\nAccess-Control-Allow-Origin: *\r\n\r\nOK");
@@ -194,12 +207,14 @@ void StreamWindow::OnNewWebConnection() {
     });
 }
 
-// --- LOGICA DE PERFIL ---
+// --- LOGICA DE PERFIL (SALVA TUDO POR ARMA) ---
 void StreamWindow::SaveProfile(const QString &name) {
     QSettings s("DanielMods", "ZenGhost");
     s.beginGroup(name);
     s.setValue("recoil_v", slider_v->value());
     s.setValue("sticky_power", slider_sticky_power->value());
+    s.setValue("lock_power", slider_lock_power->value());
+    s.setValue("start_delay", slider_start_delay->value());
     s.setValue("crouch", check_crouch_spam->isChecked());
     s.setValue("drop", check_drop_shot->isChecked());
     s.setValue("sticky_aim", check_sticky_aim->isChecked());
@@ -212,6 +227,8 @@ void StreamWindow::LoadProfile(const QString &name) {
     s.beginGroup(name);
     slider_v->setValue(s.value("recoil_v", 0).toInt());
     slider_sticky_power->setValue(s.value("sticky_power", 750).toInt());
+    slider_lock_power->setValue(s.value("lock_power", 160).toInt());
+    slider_start_delay->setValue(s.value("start_delay", 2).toInt());
     check_crouch_spam->setChecked(s.value("crouch", false).toBool());
     check_drop_shot->setChecked(s.value("drop", false).toBool());
     check_sticky_aim->setChecked(s.value("sticky_aim", false).toBool());
@@ -219,10 +236,14 @@ void StreamWindow::LoadProfile(const QString &name) {
     s.endGroup();
 }
 
-// EVENTOS PADRÃO
+// ... Restante das funções (StartWebBridge, KeyEvents, etc) permanecem iguais ...
+void StreamWindow::StartWebBridge() {
+    web_server = new QTcpServer(this);
+    if (web_server->listen(QHostAddress::Any, 8080)) {
+        connect(web_server, &QTcpServer::newConnection, this, &StreamWindow::OnNewWebConnection);
+    }
+}
 void StreamWindow::keyPressEvent(QKeyEvent *e) { 
-    if (e->key() == Qt::Key_PageUp) slider_v->setValue(slider_v->value() + 1);
-    else if (e->key() == Qt::Key_PageDown) slider_v->setValue(slider_v->value() - 1);
     if(session) session->HandleKeyboardEvent(e); 
 }
 void StreamWindow::keyReleaseEvent(QKeyEvent *e) { if(session) session->HandleKeyboardEvent(e); }
@@ -231,7 +252,7 @@ void StreamWindow::mouseReleaseEvent(QMouseEvent *e) { if(session) session->Hand
 void StreamWindow::mouseDoubleClickEvent(QMouseEvent *e) { ToggleFullscreen(); QMainWindow::mouseDoubleClickEvent(e); }
 void StreamWindow::closeEvent(QCloseEvent *e) { if(session) session->Stop(); }
 void StreamWindow::SessionQuit(ChiakiQuitReason r, const QString &s) { close(); }
-void StreamWindow::LoginPINRequested(bool i) { /* Dialog PIN... */ }
+void StreamWindow::LoginPINRequested(bool i) {}
 void StreamWindow::ToggleFullscreen() { if(isFullScreen()) showNormal(); else showFullScreen(); }
 void StreamWindow::resizeEvent(QResizeEvent *e) { QMainWindow::resizeEvent(e); }
 void StreamWindow::moveEvent(QMoveEvent *e) { QMainWindow::moveEvent(e); }
