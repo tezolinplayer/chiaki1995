@@ -10,7 +10,14 @@
 #include <QMessageBox>
 #include <QCoreApplication>
 #include <QAction>
-#include <QDebug> // Adicionado para ver os valores de recoil no console
+#include <QDebug> // Para ver os valores de recoil no console de debug
+
+// ------------------------------------------------------------------
+// VARIÁVEIS GLOBAIS DE RECOIL (DANIEL MOD)
+// Essas variáveis são lidas pelo controller.c via 'extern'
+// ------------------------------------------------------------------
+int recoil_v_global = 0; 
+int recoil_h_global = 0;
 
 StreamWindow::StreamWindow(const StreamSessionConnectInfo &connect_info, QWidget *parent)
 	: QMainWindow(parent),
@@ -22,12 +29,9 @@ StreamWindow::StreamWindow(const StreamSessionConnectInfo &connect_info, QWidget
 	session = nullptr;
 	av_widget = nullptr;
 
-	// ------------------------------------------------------------------
-	// INICIALIZAÇÃO DO RECOIL (DANIEL MOD)
-	// ------------------------------------------------------------------
-	recoil_v = 0;      // Começa zerado
-	recoil_h = 0;      // Começa zerado
-	is_firing = false; // Estado inicial do gatilho
+	// Resetar valores ao abrir a janela
+	recoil_v_global = 0;
+	recoil_h_global = 0;
 
 	try
 	{
@@ -56,7 +60,8 @@ void StreamWindow::Init()
 	connect(session, &StreamSession::SessionQuit, this, &StreamWindow::SessionQuit);
 	connect(session, &StreamSession::LoginPINRequested, this, &StreamWindow::LoginPINRequested);
 
-	// --- MODO GHOST ---
+	// --- MODO GHOST ATIVADO ---
+	// Background preto simples para economizar processamento do Xeon e GPU
 	QWidget *bg_widget = new QWidget(this);
 	bg_widget->setStyleSheet("background-color: black;");
 	setCentralWidget(bg_widget);
@@ -72,33 +77,34 @@ void StreamWindow::Init()
 	addAction(fullscreen_action);
 	connect(fullscreen_action, &QAction::triggered, this, &StreamWindow::ToggleFullscreen);
 
+	// Janela compacta para focar apenas no processamento de input
 	resize(480, 270); 
 	show();
 }
 
 // ------------------------------------------------------------------
-// SISTEMA DE AJUSTE DE RECOIL VIA TECLADO (DANIEL MOD)
+// SISTEMA DE AJUSTE DE RECOIL EM TEMPO REAL (DANIEL MOD)
 // ------------------------------------------------------------------
 void StreamWindow::keyPressEvent(QKeyEvent *event)
 {
-	// Ajuste Vertical (PageUp aumenta o puxão, PageDown diminui)
+	// Ajuste Vertical (PageUp aumenta o puxão para baixo, PageDown diminui)
 	if (event->key() == Qt::Key_PageUp) {
-		recoil_v++;
-		qDebug() << "Recoil Vertical:" << recoil_v;
+		recoil_v_global++;
+		qDebug() << "Recoil Vertical Ajustado para:" << recoil_v_global;
 	} 
 	else if (event->key() == Qt::Key_PageDown) {
-		recoil_v--;
-		qDebug() << "Recoil Vertical:" << recoil_v;
+		recoil_v_global--;
+		qDebug() << "Recoil Vertical Ajustado para:" << recoil_v_global;
 	}
 	
-	// Ajuste Horizontal (Home/End)
+	// Ajuste Horizontal (Home aumenta para direita, End aumenta para esquerda)
 	else if (event->key() == Qt::Key_Home) {
-		recoil_h++;
-		qDebug() << "Recoil Horizontal:" << recoil_h;
+		recoil_h_global++;
+		qDebug() << "Recoil Horizontal Ajustado para:" << recoil_h_global;
 	}
 	else if (event->key() == Qt::Key_End) {
-		recoil_h--;
-		qDebug() << "Recoil Horizontal:" << recoil_h;
+		recoil_h_global--;
+		qDebug() << "Recoil Horizontal Ajustado para:" << recoil_h_global;
 	}
 
 	if(session)
@@ -213,5 +219,5 @@ void StreamWindow::changeEvent(QEvent *event)
 
 void StreamWindow::UpdateVideoTransform()
 {
-	// Função vazia: sem vídeo, sem transformação.
+    // Ghost Mode: Sem vídeo para transformar.
 }
