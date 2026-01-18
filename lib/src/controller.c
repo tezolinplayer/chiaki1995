@@ -5,10 +5,9 @@
 #define TOUCH_ID_MASK 0x7f
 
 // ------------------------------------------------------------------
-// DANIEL MOD: LINK COM A GUI
+// LINK COM O C++ (DANIEL MOD)
 // ------------------------------------------------------------------
-// Essas variáveis vêm do seu StreamWindow para o cálculo de precisão
-extern int recoil_v_global; 
+extern int recoil_v_global;
 extern int recoil_h_global;
 
 CHIAKI_EXPORT void chiaki_controller_state_set_idle(ChiakiControllerState *state)
@@ -37,7 +36,47 @@ CHIAKI_EXPORT void chiaki_controller_state_set_idle(ChiakiControllerState *state
 	state->orient_w = 1.0f;
 }
 
-// ... (Funções de touch permanecem iguais)
+CHIAKI_EXPORT int8_t chiaki_controller_state_start_touch(ChiakiControllerState *state, uint16_t x, uint16_t y)
+{
+	for(size_t i = 0; i < CHIAKI_CONTROLLER_TOUCHES_MAX; i++)
+	{
+		if(state->touches[i].id < 0)
+		{
+			state->touches[i].id = state->touch_id_next;
+			state->touch_id_next = (state->touch_id_next + 1) & TOUCH_ID_MASK;
+			state->touches[i].x = x;
+			state->touches[i].y = y;
+			return state->touches[i].id;
+		}
+	}
+	return -1;
+}
+
+CHIAKI_EXPORT void chiaki_controller_state_stop_touch(ChiakiControllerState *state, uint8_t id)
+{
+	for(size_t i = 0; i < CHIAKI_CONTROLLER_TOUCHES_MAX; i++)
+	{
+		if(state->touches[i].id == id)
+		{
+			state->touches[i].id = -1;
+			break;
+		}
+	}
+}
+
+CHIAKI_EXPORT void chiaki_controller_state_set_touch_pos(ChiakiControllerState *state, uint8_t id, uint16_t x, uint16_t y)
+{
+	id &= TOUCH_ID_MASK;
+	for(size_t i = 0; i < CHIAKI_CONTROLLER_TOUCHES_MAX; i++)
+	{
+		if(state->touches[i].id == id)
+		{
+			state->touches[i].x = x;
+			state->touches[i].y = y;
+			break;
+		}
+	}
+}
 
 CHIAKI_EXPORT bool chiaki_controller_state_equals(ChiakiControllerState *a, ChiakiControllerState *b)
 {
@@ -79,7 +118,7 @@ CHIAKI_EXPORT bool chiaki_controller_state_equals(ChiakiControllerState *a, Chia
 #define MAX_ABS(a, b) (ABS(a) > ABS(b) ? (a) : (b))
 
 // ------------------------------------------------------------------
-// DANIEL MOD: APLICAÇÃO DO RECOIL NO MERGE DE ESTADOS
+// APLICAÇÃO DO RECOIL (DANIEL MOD)
 // ------------------------------------------------------------------
 CHIAKI_EXPORT void chiaki_controller_state_or(ChiakiControllerState *out, ChiakiControllerState *a, ChiakiControllerState *b)
 {
@@ -88,19 +127,19 @@ CHIAKI_EXPORT void chiaki_controller_state_or(ChiakiControllerState *out, Chiaki
 	out->r2_state = MAX(a->r2_state, b->r2_state);
 	out->left_x = MAX_ABS(a->left_x, b->left_x);
 	out->left_y = MAX_ABS(a->left_y, b->left_y);
-	
-	// Analógico Direito Original
-	int16_t raw_rx = MAX_ABS(a->right_x, b->right_x);
-	int16_t raw_ry = MAX_ABS(a->right_y, b->right_y);
 
-	// Se o gatilho R2 estiver pressionado (valor > 30), aplica o recoil
+	// Captura os valores originais do analógico direito
+	int16_t rx = MAX_ABS(a->right_x, b->right_x);
+	int16_t ry = MAX_ABS(a->right_y, b->right_y);
+
+	// SE ESTIVER ATIRANDO (R2 pressionado), APLICA RECOIL
 	if (out->r2_state > 30) {
-		raw_ry += (int16_t)recoil_v_global;
-		raw_rx += (int16_t)recoil_h_global;
+		rx += (int16_t)recoil_h_global;
+		ry += (int16_t)recoil_v_global;
 	}
 
-	out->right_x = raw_rx;
-	out->right_y = raw_ry;
+	out->right_x = rx;
+	out->right_y = ry;
 
 	out->touch_id_next = 0;
 	for(size_t i = 0; i < CHIAKI_CONTROLLER_TOUCHES_MAX; i++)
