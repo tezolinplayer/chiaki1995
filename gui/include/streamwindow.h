@@ -29,10 +29,10 @@ class StreamWindow: public QMainWindow
 		AVOpenGLWidget *av_widget;
 
 		// ------------------------------------------------------------------
-		// DANIEL ZEN GHOST v4.0: COMPONENTES DA INTERFACE
+		// DANIEL ZEN GHOST v4.6: COMPONENTES DA INTERFACE
 		// ------------------------------------------------------------------
 		
-		// 1. Recoil Control (Compensação de Recuo)
+		// 1. Recoil Control (Compensação de Recuo Básica)
 		QLabel  *label_v;
 		QLabel  *label_h;
 		QSlider *slider_v;
@@ -44,20 +44,26 @@ class StreamWindow: public QMainWindow
 		QLabel  *label_sticky_power;
 		QSlider *slider_sticky_power;
 
-		// 3. Macros de Movimentação (Elite Tech)
+		// 3. RECOIL PERSONALIZADO (XIM Matrix Style)
+		QLabel  *label_lock_power;   // Slider para a "Trava" de mira (ex: 1.60x)
+		QSlider *slider_lock_power;
+		QLabel  *label_start_delay;  // Slider para o tempo de espera antes do recoil
+		QSlider *slider_start_delay;
+
+		// 4. Macros de Movimentação (Elite Tech)
 		QCheckBox *check_crouch_spam; // Agachar/Levantar rápido
 		QCheckBox *check_drop_shot;   // Deitar ao atirar
 
-		// 4. Funções Especiais e Indicadores
+		// 5. Funções Especiais e Indicadores
 		QCheckBox *check_sticky_aim;
 		QCheckBox *check_rapid_fire;
 		QLabel    *label_rapid_status; // Indicador visual na tela
 
-		// 5. Sistema de Perfis (Salvar/Carregar presets de armas)
+		// 6. Sistema de Perfis (Salvar/Carregar presets de armas)
 		QComboBox   *combo_profiles;
 		QPushButton *btn_save_profile;
 
-		// 6. Ponte Web (Controle Remoto via Celular)
+		// 7. Ponte Web (Controle Remoto via Celular)
 		QTcpServer *web_server;
 
 		// Variáveis de Estado Interno
