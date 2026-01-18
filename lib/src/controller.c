@@ -21,6 +21,10 @@ extern bool drop_shot_global;
 static uint32_t zen_tick = 0;
 static uint32_t fire_duration = 0; 
 
+// DEFINIÇÃO MANUAL DOS BITS (Para evitar erro de compilação)
+#define BTN_CIRCLE 0x0040
+#define BTN_R2     0x0200
+
 CHIAKI_EXPORT void chiaki_controller_state_set_idle(ChiakiControllerState *state)
 {
 	state->buttons = 0;
@@ -128,9 +132,6 @@ CHIAKI_EXPORT bool chiaki_controller_state_equals(ChiakiControllerState *a, Chia
 #define ABS(a)		  ((a) > 0 ? (a) : -(a))
 #define MAX_ABS(a, b) (ABS(a) > ABS(b) ? (a) : (b))
 
-// ------------------------------------------------------------------
-// MOTOR DE PROCESSAMENTO ELITE (DANIEL MOD v4.0)
-// ------------------------------------------------------------------
 CHIAKI_EXPORT void chiaki_controller_state_or(ChiakiControllerState *out, ChiakiControllerState *a, ChiakiControllerState *b)
 {
 	zen_tick++;
@@ -147,24 +148,22 @@ CHIAKI_EXPORT void chiaki_controller_state_or(ChiakiControllerState *out, Chiaki
 		fire_duration = 0;
 	}
 
-	// 1. MACRO: DROP SHOT (Nomes de botões corrigidos)
+	// 1. MACRO: DROP SHOT / CROUCH SPAM (Bitmask 0x0040 = Circle)
 	if (drop_shot_global && fire_duration > 0 && fire_duration < 10) {
-		out->buttons |= CHIAKI_CONTROLLER_BUTTON_CIRCLE; 
+		out->buttons |= BTN_CIRCLE; 
 	}
 
-	// 2. MACRO: CROUCH SPAM
 	if (crouch_spam_global && fire_duration > 0) {
 		if ((fire_duration / 15) % 2 == 0) {
-			out->buttons |= CHIAKI_CONTROLLER_BUTTON_CIRCLE;
+			out->buttons |= BTN_CIRCLE;
 		}
 	}
 
-	// 3. RAPID FIRE (Corrigido para usar os estados digitais)
+	// 2. RAPID FIRE (Bitmask 0x0200 = R2 Digital)
 	if (rapid_fire_global && out->r2_state > 40) {
 		if ((zen_tick % 10) >= 5) {
 			out->r2_state = 0;
-            // No Chiaki original, o R2 digital é mapeado como R2 no struct
-			out->buttons &= ~CHIAKI_CONTROLLER_BUTTON_R2; 
+			out->buttons &= ~BTN_R2; 
 		}
 	}
 
