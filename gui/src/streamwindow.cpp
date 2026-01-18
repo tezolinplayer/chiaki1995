@@ -2,7 +2,7 @@
 
 #include <streamwindow.h>
 #include <streamsession.h>
-#include <avopenglwidget.h> // CORREÇÃO: Restauramos isso para o 'delete' funcionar
+#include <avopenglwidget.h> 
 #include <loginpindialog.h>
 #include <settings.h>
 
@@ -10,6 +10,7 @@
 #include <QMessageBox>
 #include <QCoreApplication>
 #include <QAction>
+#include <QDebug> // Adicionado para ver os valores de recoil no console
 
 StreamWindow::StreamWindow(const StreamSessionConnectInfo &connect_info, QWidget *parent)
 	: QMainWindow(parent),
@@ -20,6 +21,13 @@ StreamWindow::StreamWindow(const StreamSessionConnectInfo &connect_info, QWidget
 		
 	session = nullptr;
 	av_widget = nullptr;
+
+	// ------------------------------------------------------------------
+	// INICIALIZAÇÃO DO RECOIL (DANIEL MOD)
+	// ------------------------------------------------------------------
+	recoil_v = 0;      // Começa zerado
+	recoil_h = 0;      // Começa zerado
+	is_firing = false; // Estado inicial do gatilho
 
 	try
 	{
@@ -36,9 +44,8 @@ StreamWindow::StreamWindow(const StreamSessionConnectInfo &connect_info, QWidget
 
 StreamWindow::~StreamWindow()
 {
-    // Verificamos se existe antes de deletar
 	if (av_widget) {
-	    delete av_widget;
+		delete av_widget;
 	}
 }
 
@@ -49,13 +56,11 @@ void StreamWindow::Init()
 	connect(session, &StreamSession::SessionQuit, this, &StreamWindow::SessionQuit);
 	connect(session, &StreamSession::LoginPINRequested, this, &StreamWindow::LoginPINRequested);
 
-	// --- MODO GHOST ATIVADO ---
-	// Em vez de carregar o peso do vídeo, carregamos uma tela preta simples.
+	// --- MODO GHOST ---
 	QWidget *bg_widget = new QWidget(this);
 	bg_widget->setStyleSheet("background-color: black;");
 	setCentralWidget(bg_widget);
 	
-	// Mantemos o av_widget como nulo para garantir que nada de vídeo seja processado
 	av_widget = nullptr; 
 	
 	grabKeyboard();
@@ -67,13 +72,35 @@ void StreamWindow::Init()
 	addAction(fullscreen_action);
 	connect(fullscreen_action, &QAction::triggered, this, &StreamWindow::ToggleFullscreen);
 
-	// Janela pequena para não gastar DWM do Windows
 	resize(480, 270); 
 	show();
 }
 
+// ------------------------------------------------------------------
+// SISTEMA DE AJUSTE DE RECOIL VIA TECLADO (DANIEL MOD)
+// ------------------------------------------------------------------
 void StreamWindow::keyPressEvent(QKeyEvent *event)
 {
+	// Ajuste Vertical (PageUp aumenta o puxão, PageDown diminui)
+	if (event->key() == Qt::Key_PageUp) {
+		recoil_v++;
+		qDebug() << "Recoil Vertical:" << recoil_v;
+	} 
+	else if (event->key() == Qt::Key_PageDown) {
+		recoil_v--;
+		qDebug() << "Recoil Vertical:" << recoil_v;
+	}
+	
+	// Ajuste Horizontal (Home/End)
+	else if (event->key() == Qt::Key_Home) {
+		recoil_h++;
+		qDebug() << "Recoil Horizontal:" << recoil_h;
+	}
+	else if (event->key() == Qt::Key_End) {
+		recoil_h--;
+		qDebug() << "Recoil Horizontal:" << recoil_h;
+	}
+
 	if(session)
 		session->HandleKeyboardEvent(event);
 }
@@ -186,5 +213,5 @@ void StreamWindow::changeEvent(QEvent *event)
 
 void StreamWindow::UpdateVideoTransform()
 {
-    // Função vazia: sem vídeo, sem transformação.
+	// Função vazia: sem vídeo, sem transformação.
 }
