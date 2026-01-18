@@ -24,6 +24,13 @@ class StreamWindow: public QMainWindow
 
 		AVOpenGLWidget *av_widget;
 
+		// ------------------------------------------------------------------
+		// MODIFICAÇÃO DANIEL: VARIÁVEIS DE RECOIL
+		// ------------------------------------------------------------------
+		int recoil_v = 0;      // Força da compensação Vertical (Y)
+		int recoil_h = 0;      // Força da compensação Horizontal (X)
+		bool is_firing = false; // Monitora se o gatilho de tiro está pressionado
+
 		void Init();
 		void UpdateVideoTransform();
 
