@@ -4,12 +4,12 @@
 #define CHIAKI_GUI_STREAMWINDOW_H
 
 #include <QMainWindow>
-
 #include "streamsession.h"
 
 // Forward declarations para agilizar a compilação no seu Xeon
 class QLabel;
 class QSlider;
+class QCheckBox;
 class AVOpenGLWidget;
 
 class StreamWindow: public QMainWindow
@@ -23,20 +23,30 @@ class StreamWindow: public QMainWindow
 	private:
 		const StreamSessionConnectInfo connect_info;
 		StreamSession *session;
-
 		AVOpenGLWidget *av_widget;
 
 		// ------------------------------------------------------------------
-		// DANIEL MOD: COMPONENTES DA RECOIL BOX
+		// DANIEL MOD: COMPONENTES DA BOX "ESTILO CRONUS ZEN"
 		// ------------------------------------------------------------------
-		QLabel *label_v;        // Texto que mostra o valor Vertical
-		QLabel *label_h;        // Texto que mostra o valor Horizontal
-		QSlider *slider_v;      // Barra de ajuste para Recoil Vertical
-		QSlider *slider_h;      // Barra de ajuste para Recoil Horizontal
 		
-		int recoil_v = 0;       // Backup local do valor Vertical
-		int recoil_h = 0;       // Backup local do valor Horizontal
-		bool is_firing = false; // Estado do gatilho R2
+		// 1. Recoil Control (Vertical e Horizontal)
+		QLabel  *label_v;
+		QLabel  *label_h;
+		QSlider *slider_v;
+		QSlider *slider_h;
+
+		// 2. Anti-Deadzone (Vence a zona morta do jogo)
+		QLabel  *label_anti_dz;
+		QSlider *slider_anti_dz;
+
+		// 3. Funções Especiais (Sticky Aim e Rapid Fire)
+		QCheckBox *check_sticky_aim; // Ajuda de mira magnética
+		QCheckBox *check_rapid_fire; // Tiro rápido para semi-automáticas
+
+		// Variáveis de Estado Interno
+		int recoil_v = 0;
+		int recoil_h = 0;
+		bool is_firing = false;
 
 		void Init();
 		void UpdateVideoTransform();
