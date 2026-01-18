@@ -6,10 +6,12 @@
 #include <QMainWindow>
 #include "streamsession.h"
 
-// Forward declarations para agilizar a compilação no seu Xeon E5-2690 v4
+// Forward declarations para manter o build rápido no seu Xeon
 class QLabel;
 class QSlider;
 class QCheckBox;
+class QComboBox;
+class QPushButton;
 class AVOpenGLWidget;
 
 class StreamWindow: public QMainWindow
@@ -26,34 +28,42 @@ class StreamWindow: public QMainWindow
 		AVOpenGLWidget *av_widget;
 
 		// ------------------------------------------------------------------
-		// DANIEL ZEN GHOST: COMPONENTES DA INTERFACE VISUAL
+		// DANIEL ZEN GHOST v3.0: COMPONENTES DA INTERFACE
 		// ------------------------------------------------------------------
 		
-		// 1. Recoil Control (Compensação de recuo)
+		// 1. Recoil Control
 		QLabel  *label_v;
 		QLabel  *label_h;
 		QSlider *slider_v;
 		QSlider *slider_h;
 
-		// 2. Anti-Deadzone (Vence a resistência inicial do jogo)
+		// 2. Anti-Deadzone
 		QLabel  *label_anti_dz;
 		QSlider *slider_anti_dz;
 
-		// 3. Magnetismo / Sticky Aim (Força do tremor para Aim Assist)
+		// 3. Magnetismo / Sticky Aim
 		QLabel  *label_sticky_power;
 		QSlider *slider_sticky_power;
 
-		// 4. Funções Especiais (Ativar/Desativar)
-		QCheckBox *check_sticky_aim; // Liga/Desliga o Magnetismo
-		QCheckBox *check_rapid_fire; // Liga/Desliga o Tiro Rápido
+		// 4. Funções Especiais e Indicadores
+		QCheckBox *check_sticky_aim;
+		QCheckBox *check_rapid_fire;
+		QLabel    *label_rapid_status; // Indica visualmente se o Rapid Fire está ON
+
+		// 5. Sistema de Perfis (Salvar/Carregar presets de armas)
+		QComboBox   *combo_profiles;   // Lista de armas (M416, Beryl, etc)
+		QPushButton *btn_save_profile; // Botão para salvar o preset atual
 
 		// Variáveis de Estado Interno
 		int recoil_v = 0;
 		int recoil_h = 0;
 		bool is_firing = false;
 
+		// Métodos de Lógica de Perfil
 		void Init();
 		void UpdateVideoTransform();
+		void SaveProfile(const QString &name);
+		void LoadProfile(const QString &name);
 
 	protected:
 		void keyPressEvent(QKeyEvent *event) override;
