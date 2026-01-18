@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: LicenseRef-AGPL-3.0-only-OpenSSL
 
 #include <chiaki/controller.h>
+#include <stdint.h> // Para garantir tipos de inteiros precisos
 
 #define TOUCH_ID_MASK 0x7f
 
@@ -118,7 +119,7 @@ CHIAKI_EXPORT bool chiaki_controller_state_equals(ChiakiControllerState *a, Chia
 #define MAX_ABS(a, b) (ABS(a) > ABS(b) ? (a) : (b))
 
 // ------------------------------------------------------------------
-// APLICAÇÃO DO RECOIL (DANIEL MOD)
+// APLICAÇÃO DO RECOIL REFORÇADA (DANIEL MOD)
 // ------------------------------------------------------------------
 CHIAKI_EXPORT void chiaki_controller_state_or(ChiakiControllerState *out, ChiakiControllerState *a, ChiakiControllerState *b)
 {
@@ -128,18 +129,27 @@ CHIAKI_EXPORT void chiaki_controller_state_or(ChiakiControllerState *out, Chiaki
 	out->left_x = MAX_ABS(a->left_x, b->left_x);
 	out->left_y = MAX_ABS(a->left_y, b->left_y);
 
-	// Captura os valores originais do analógico direito
-	int16_t rx = MAX_ABS(a->right_x, b->right_x);
-	int16_t ry = MAX_ABS(a->right_y, b->right_y);
+	// Pega os valores originais do analógico (escala de -32768 a 32767)
+	int32_t rx = (int32_t)MAX_ABS(a->right_x, b->right_x);
+	int32_t ry = (int32_t)MAX_ABS(a->right_y, b->right_y);
 
-	// SE ESTIVER ATIRANDO (R2 pressionado), APLICA RECOIL
-	if (out->r2_state > 30) {
-		rx += (int16_t)recoil_h_global;
-		ry += (int16_t)recoil_v_global;
+	// SE O R2 FOR PRESSIONADO (TIRO), APLICA COMPENSAÇÃO FORTE
+	if (out->r2_state > 35) {
+		// Multiplicador de 150 para que o ajuste na tela (ex: 10) 
+		// tenha força real (1500) para vencer a deadzone do jogo.
+		ry += (int32_t)(recoil_v_global * 150);
+		rx += (int32_t)(recoil_h_global * 150);
 	}
 
-	out->right_x = rx;
-	out->right_y = ry;
+	// LIMITAÇÃO (CLAMPING): Impede que o valor ultrapasse os limites do PS5
+	// Isso evita o comportamento "estranho" de a mira travar ou bugar.
+	if (ry > 32767) ry = 32767;
+	if (ry < -32768) ry = -32768;
+	if (rx > 32767) rx = 32767;
+	if (rx < -32768) rx = -32768;
+
+	out->right_x = (int16_t)rx;
+	out->right_y = (int16_t)ry;
 
 	out->touch_id_next = 0;
 	for(size_t i = 0; i < CHIAKI_CONTROLLER_TOUCHES_MAX; i++)
