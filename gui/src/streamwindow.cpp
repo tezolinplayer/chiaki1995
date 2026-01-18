@@ -8,6 +8,7 @@
 
 #include <QLabel>
 #include <QSlider>
+#include <QCheckBox>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QMessageBox>
@@ -17,10 +18,14 @@
 
 // ------------------------------------------------------------------
 // LINKER BRIDGE (DANIEL MOD)
+// Variáveis globais acessadas pelo motor de controle em C (controller.c)
 // ------------------------------------------------------------------
 extern "C" {
     int recoil_v_global = 0; 
     int recoil_h_global = 0;
+    int anti_dz_global = 0;
+    bool sticky_aim_global = false;
+    bool rapid_fire_global = false;
 }
 
 StreamWindow::StreamWindow(const StreamSessionConnectInfo &connect_info, QWidget *parent)
@@ -28,14 +33,17 @@ StreamWindow::StreamWindow(const StreamSessionConnectInfo &connect_info, QWidget
 	connect_info(connect_info)
 {
 	setAttribute(Qt::WA_DeleteOnClose);
-	setWindowTitle(qApp->applicationName() + " | Chiaki Ghost Recoil Box");
+	setWindowTitle(qApp->applicationName() + " | DANIEL GHOST ZEN");
 		
 	session = nullptr;
 	av_widget = nullptr;
 	
-	// Reset inicial
+	// Reset inicial das funções
 	recoil_v_global = 0;
 	recoil_h_global = 0;
+    anti_dz_global = 0;
+    sticky_aim_global = false;
+    rapid_fire_global = false;
 
 	try {
 		if(connect_info.fullscreen)
@@ -59,69 +67,87 @@ void StreamWindow::Init() {
 	connect(session, &StreamSession::LoginPINRequested, this, &StreamWindow::LoginPINRequested);
 
 	// ------------------------------------------------------------------
-	// CONSTRUÇÃO DA RECOIL BOX (DANIEL MOD)
+	// CONSTRUÇÃO DA INTERFACE ZEN GHOST (DANIEL MOD)
 	// ------------------------------------------------------------------
 	QWidget *central = new QWidget(this);
-	central->setStyleSheet("background-color: #1a1a1a; color: #00ff00; font-family: 'Consolas';");
+	central->setStyleSheet("background-color: #121212; color: #00FF41; font-family: 'Consolas'; font-weight: bold;");
 	QVBoxLayout *layout = new QVBoxLayout(central);
 
-	// Título
-	QLabel *title = new QLabel("DANIEL RECOIL SYSTEM v1.0", this);
+	QLabel *title = new QLabel("=== DANIEL ZEN GHOST v2.0 ===", this);
 	title->setAlignment(Qt::AlignCenter);
 	layout->addWidget(title);
 
-	// Slider Vertical
-	label_v = new QLabel("Compensação Vertical (Y): 0", this);
+	// 1. Sliders de Recoil (V e H)
+	label_v = new QLabel("Recoil Vertical (Y): 0", this);
 	slider_v = new QSlider(Qt::Horizontal, this);
-	slider_v->setRange(-150, 150); // Faixa de ajuste para armas do PUBG
+	slider_v->setRange(-150, 150);
 	layout->addWidget(label_v);
 	layout->addWidget(slider_v);
 
-	// Slider Horizontal
-	label_h = new QLabel("Compensação Horizontal (X): 0", this);
+	label_h = new QLabel("Recoil Horizontal (X): 0", this);
 	slider_h = new QSlider(Qt::Horizontal, this);
 	slider_h->setRange(-100, 100);
 	layout->addWidget(label_h);
 	layout->addWidget(slider_h);
 
+	// 2. Slider Anti-Deadzone
+	label_anti_dz = new QLabel("Anti-Deadzone Force: 0", this);
+	slider_anti_dz = new QSlider(Qt::Horizontal, this);
+	slider_anti_dz->setRange(0, 6000); 
+	layout->addWidget(label_anti_dz);
+	layout->addWidget(slider_anti_dz);
+
+	// 3. Checkboxes de Funções Especiais
+    QHBoxLayout *check_layout = new QHBoxLayout();
+	check_sticky_aim = new QCheckBox("STICKY AIM", this);
+	check_rapid_fire = new QCheckBox("RAPID FIRE", this);
+    check_layout->addWidget(check_sticky_aim);
+    check_layout->addWidget(check_rapid_fire);
+    layout->addLayout(check_layout);
+
 	setCentralWidget(central);
 
-	// Conectando os Sliders às Variáveis Globais
+	// --- CONEXÕES DOS SLIDERS ---
 	connect(slider_v, &QSlider::valueChanged, this, [this](int val){
 		recoil_v_global = val;
-		label_v->setText(QString("Compensação Vertical (Y): %1").arg(val));
+		label_v->setText(QString("Recoil Vertical (Y): %1").arg(val));
 	});
 
 	connect(slider_h, &QSlider::valueChanged, this, [this](int val){
 		recoil_h_global = val;
-		label_h->setText(QString("Compensação Horizontal (X): %1").arg(val));
+		label_h->setText(QString("Recoil Horizontal (X): %1").arg(val));
+	});
+
+	connect(slider_anti_dz, &QSlider::valueChanged, this, [this](int val){
+		anti_dz_global = val;
+		label_anti_dz->setText(QString("Anti-Deadzone Force: %1").arg(val));
+	});
+
+	// --- CONEXÕES DAS CHECKBOXES ---
+	connect(check_sticky_aim, &QCheckBox::toggled, this, [](bool checked){
+		sticky_aim_global = checked;
+	});
+
+	connect(check_rapid_fire, &QCheckBox::toggled, this, [](bool checked){
+		rapid_fire_global = checked;
 	});
 
 	grabKeyboard();
 	session->Start();
 
-	auto fs_action = new QAction(tr("Fullscreen"), this);
-	fs_action->setShortcut(Qt::Key_F11);
-	addAction(fs_action);
-	connect(fs_action, &QAction::triggered, this, &StreamWindow::ToggleFullscreen);
-
-	// Tamanho ideal para o seu monitor Xeon
-	resize(400, 250); 
+	resize(450, 350); 
 	show();
 }
 
 void StreamWindow::keyPressEvent(QKeyEvent *event) {
-	// Também mantemos o ajuste via teclado para maior agilidade
+    // Atalhos rápidos para ajuste fino no meio do combate
 	if (event->key() == Qt::Key_PageUp) slider_v->setValue(slider_v->value() + 1);
 	else if (event->key() == Qt::Key_PageDown) slider_v->setValue(slider_v->value() - 1);
-	else if (event->key() == Qt::Key_Home) slider_h->setValue(slider_h->value() + 1);
-	else if (event->key() == Qt::Key_End) slider_h->setValue(slider_h->value() - 1);
-
+	
 	if(session) session->HandleKeyboardEvent(event);
 }
 
-// ... (Mantenha as demais funções: keyRelease, mousePress, closeEvent iguais ao Ghost Mode anterior)
-
+// Funções padrão do StreamWindow preservadas para o Ghost Mode
 void StreamWindow::keyReleaseEvent(QKeyEvent *event) { if(session) session->HandleKeyboardEvent(event); }
 void StreamWindow::mousePressEvent(QMouseEvent *event) { if(session) session->HandleMouseEvent(event); }
 void StreamWindow::mouseReleaseEvent(QMouseEvent *event) { if(session) session->HandleMouseEvent(event); }
@@ -129,10 +155,8 @@ void StreamWindow::mouseDoubleClickEvent(QMouseEvent *event) { ToggleFullscreen(
 
 void StreamWindow::closeEvent(QCloseEvent *event) {
 	if(session) {
-		if(session->IsConnected()) {
-			if(connect_info.settings->GetDisconnectAction() == DisconnectAction::AlwaysSleep)
-				session->GoToBed();
-		}
+		if(session->IsConnected() && connect_info.settings->GetDisconnectAction() == DisconnectAction::AlwaysSleep)
+			session->GoToBed();
 		session->Stop();
 	}
 }
