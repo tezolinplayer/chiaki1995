@@ -2,21 +2,24 @@
 
 #include <chiaki/controller.h>
 #include <stdint.h>
-#include <math.h> // Necessário para o Sticky Aim (cos/sin)
+#include <math.h>
 
 #define TOUCH_ID_MASK 0x7f
 
 // ------------------------------------------------------------------
-// LINK COM O C++ (DANIEL MOD - ZEN FEATURES)
+// LINK COM O C++ (DANIEL MOD v4.0)
 // ------------------------------------------------------------------
 extern int recoil_v_global;
 extern int recoil_h_global;
 extern int anti_dz_global;
+extern int sticky_power_global;
 extern bool sticky_aim_global;
 extern bool rapid_fire_global;
+extern bool crouch_spam_global; // Macro: Agachar/Levantar
+extern bool drop_shot_global;   // Macro: Deitar ao atirar
 
-// Contador de frames para gerenciar o tempo das funções
 static uint32_t zen_tick = 0;
+static uint32_t fire_duration = 0; // Contador de tempo de disparo contínuo
 
 CHIAKI_EXPORT void chiaki_controller_state_set_idle(ChiakiControllerState *state)
 {
@@ -126,11 +129,11 @@ CHIAKI_EXPORT bool chiaki_controller_state_equals(ChiakiControllerState *a, Chia
 #define MAX_ABS(a, b) (ABS(a) > ABS(b) ? (a) : (b))
 
 // ------------------------------------------------------------------
-// MOTOR DE PROCESSAMENTO ZEN GHOST (DANIEL MOD)
+// MOTOR DE PROCESSAMENTO ELITE (DANIEL MOD v4.0)
 // ------------------------------------------------------------------
 CHIAKI_EXPORT void chiaki_controller_state_or(ChiakiControllerState *out, ChiakiControllerState *a, ChiakiControllerState *b)
 {
-    zen_tick++; // Incrementa a cada frame de input enviado
+	zen_tick++;
 
 	out->buttons = a->buttons | b->buttons;
 	out->l2_state = MAX(a->l2_state, b->l2_state);
@@ -138,34 +141,65 @@ CHIAKI_EXPORT void chiaki_controller_state_or(ChiakiControllerState *out, Chiaki
 	out->left_x = MAX_ABS(a->left_x, b->left_x);
 	out->left_y = MAX_ABS(a->left_y, b->left_y);
 
-	// 1. CORREÇÃO RAPID FIRE: Janela de 10 ticks para o console registrar o clique
+	// Controle de Tempo de Disparo (Para Curva e Macros)
+	if (out->r2_state > 40) {
+		fire_duration++;
+	} else {
+		fire_duration = 0;
+	}
+
+	// 1. MACRO: DROP SHOT (Deita instantaneamente ao começar a atirar)
+	if (drop_shot_global && fire_duration > 0 && fire_duration < 10) {
+		out->buttons |= CHIAKI_CONTROLLER_BUTTON_CIRCLE; // Segura Círculo/B
+	}
+
+	// 2. MACRO: CROUCH SPAM (Fica agachando e levantando enquanto atira)
+	if (crouch_spam_global && fire_duration > 0) {
+		// Alterna a cada 15 ticks (aproximadamente 200ms)
+		if ((fire_duration / 15) % 2 == 0) {
+			out->buttons |= CHIAKI_CONTROLLER_BUTTON_CIRCLE;
+		}
+	}
+
+	// 3. RAPID FIRE (Com janela de tempo para o console registrar)
 	if (rapid_fire_global && out->r2_state > 40) {
 		if ((zen_tick % 10) >= 5) {
 			out->r2_state = 0;
+			out->buttons &= ~CHIAKI_CONTROLLER_BUTTON_R2;
 		}
 	}
 
 	int32_t rx = (int32_t)MAX_ABS(a->right_x, b->right_x);
 	int32_t ry = (int32_t)MAX_ABS(a->right_y, b->right_y);
 
-	// 2. STICKY AIM (Magnetic Assist): Tremor circular microscópico
+	// 4. STICKY AIM (Magnetismo com ajuste de força via interface)
 	if (sticky_aim_global && out->r2_state > 30) {
 		float angle = (float)zen_tick * 0.6f;
-		rx += (int32_t)(cosf(angle) * 750.0f);
-		ry += (int32_t)(sinf(angle) * 750.0f);
+		rx += (int32_t)(cosf(angle) * (float)sticky_power_global);
+		ry += (int32_t)(sinf(angle) * (float)sticky_power_global);
 	}
 
-	// 3. ANTI-DEADZONE: Vence a resistência do jogo
+	// 5. ANTI-DEADZONE (Resposta instantânea da mira)
 	if (rx > 500) rx += anti_dz_global; else if (rx < -500) rx -= anti_dz_global;
 	if (ry > 500) ry += anti_dz_global; else if (ry < -500) ry -= anti_dz_global;
 
-	// 4. RECOIL CONTROL: Compensação multiplicada
+	// 6. RECOIL ADAPTATIVO (SPRAY CURVE)
 	if (out->r2_state > 40) {
-		ry += (int32_t)(recoil_v_global * 150);
+		float curve_multiplier = 1.0f;
+
+		// Estágios da Curva (Início suave, Final agressivo)
+		if (fire_duration > 50) {
+			curve_multiplier = 1.6f; // Aumenta 60% a força no final do pente
+			rx += (int32_t)(recoil_h_global * 40); // Compensação horizontal extra
+		} else if (fire_duration > 15) {
+			curve_multiplier = 1.3f; // Aumenta 30% após os primeiros tiros
+		}
+
+		ry += (int32_t)(recoil_v_global * 150 * curve_multiplier);
 		rx += (int32_t)(recoil_h_global * 150);
 	}
 
-	// LIMITAÇÃO (CLAMPING) FINAL
+	// LIMITAÇÃO DE SEGURANÇA (CLAMPING)
 	if (ry > 32767) ry = 32767;
 	if (ry < -32768) ry = -32768;
 	if (rx > 32767) rx = 32767;
@@ -174,6 +208,7 @@ CHIAKI_EXPORT void chiaki_controller_state_or(ChiakiControllerState *out, Chiaki
 	out->right_x = (int16_t)rx;
 	out->right_y = (int16_t)ry;
 
+	// Processamento do Touchpad
 	out->touch_id_next = 0;
 	for(size_t i = 0; i < CHIAKI_CONTROLLER_TOUCHES_MAX; i++)
 	{
