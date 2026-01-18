@@ -1,9 +1,7 @@
-name: Build Chiaki Ghost Windows
+name: Build Chiaki Ghost Recoil Edition
 
 on:
   push:
-    branches: [ "master", "main" ]
-  pull_request:
     branches: [ "master", "main" ]
   workflow_dispatch:
 
@@ -25,26 +23,20 @@ jobs:
         msystem: MINGW64
         update: true
         install: >-
-          git
-          base-devel
-          mingw-w64-x86_64-toolchain
-          mingw-w64-x86_64-cmake
-          mingw-w64-x86_64-ninja
-          mingw-w64-x86_64-qt5
-          mingw-w64-x86_64-ffmpeg
-          mingw-w64-x86_64-openssl
-          mingw-w64-x86_64-SDL2
-          mingw-w64-x86_64-protobuf
-          mingw-w64-x86_64-python-protobuf
-          mingw-w64-x86_64-opus
-          mingw-w64-x86_64-hidapi
+          git base-devel mingw-w64-x86_64-toolchain mingw-w64-x86_64-cmake
+          mingw-w64-x86_64-ninja mingw-w64-x86_64-qt5 mingw-w64-x86_64-ffmpeg
+          mingw-w64-x86_64-openssl mingw-w64-x86_64-SDL2 mingw-w64-x86_64-protobuf
+          mingw-w64-x86_64-python-protobuf mingw-w64-x86_64-opus mingw-w64-x86_64-hidapi
           mingw-w64-x86_64-python-setuptools
 
-    - name: Patch Code and CMake
+    - name: Patch Code and Linker
       run: |
+        # Ajustes de Versão CMake
         sed -i 's/cmake_minimum_required(VERSION .*/cmake_minimum_required(VERSION 3.10)/' CMakeLists.txt
         sed -i 's/cmake_minimum_required(VERSION .*/cmake_minimum_required(VERSION 3.10)/' third-party/nanopb/CMakeLists.txt
         sed -i '/install(FILES.*DESTINATION.*)/d' third-party/nanopb/CMakeLists.txt
+        
+        # Correções de Código C/C++ (DANIEL MOD)
         sed -i 's/WSAGetLastError;/WSAGetLastError();/g' lib/src/ctrl.c
         sed -i 's/&sockerr,/(char*)\&sockerr,/g' lib/src/stoppipe.c
         sed -i '/avcodec_close(decoder->codec_context);/d' lib/src/ffmpegdecoder.c
@@ -64,22 +56,14 @@ jobs:
       run: |
         ln -s /mingw64/bin/qmake-qt5.exe /mingw64/bin/qmake.exe || true
         export PATH="/mingw64/bin:$PATH"
-        
         cd build
         mkdir release_package
         cp gui/chiaki.exe release_package/
-        
         /mingw64/bin/windeployqt-qt5 --release --no-translations --no-compiler-runtime --no-opengl --no-angle release_package/chiaki.exe || true
-        
-        # Cópia MASSIVA de DLLs para evitar erros de "libXXX.dll não encontrada"
-        # Incluindo libaom, dav1d, vpx e outros sub-codecs do FFmpeg
         cp /mingw64/bin/*.dll release_package/ || true
-        
-        # Limpeza para o zip não ficar gigante (opcional, mas recomendado)
-        # Mantemos apenas o essencial se você preferir, mas copiar todas garante que funcione.
 
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: Chiaki-Ghost-Windows
+        name: Chiaki-Ghost-Recoil
         path: build/release_package/
