@@ -1,15 +1,22 @@
 // SPDX-License-Identifier: LicenseRef-AGPL-3.0-only-OpenSSL
 
 #include <chiaki/controller.h>
-#include <stdint.h> // Para garantir tipos de inteiros precisos
+#include <stdint.h>
+#include <math.h> // Necessário para o Sticky Aim (cos/sin)
 
 #define TOUCH_ID_MASK 0x7f
 
 // ------------------------------------------------------------------
-// LINK COM O C++ (DANIEL MOD)
+// LINK COM O C++ (DANIEL MOD - ZEN FEATURES)
 // ------------------------------------------------------------------
 extern int recoil_v_global;
 extern int recoil_h_global;
+extern int anti_dz_global;
+extern bool sticky_aim_global;
+extern bool rapid_fire_global;
+
+// Contador de frames para gerenciar o tempo das funções
+static uint32_t zen_tick = 0;
 
 CHIAKI_EXPORT void chiaki_controller_state_set_idle(ChiakiControllerState *state)
 {
@@ -119,30 +126,46 @@ CHIAKI_EXPORT bool chiaki_controller_state_equals(ChiakiControllerState *a, Chia
 #define MAX_ABS(a, b) (ABS(a) > ABS(b) ? (a) : (b))
 
 // ------------------------------------------------------------------
-// APLICAÇÃO DO RECOIL REFORÇADA (DANIEL MOD)
+// MOTOR DE PROCESSAMENTO ZEN GHOST (DANIEL MOD)
 // ------------------------------------------------------------------
 CHIAKI_EXPORT void chiaki_controller_state_or(ChiakiControllerState *out, ChiakiControllerState *a, ChiakiControllerState *b)
 {
+    zen_tick++; // Incrementa a cada frame de input enviado
+
 	out->buttons = a->buttons | b->buttons;
 	out->l2_state = MAX(a->l2_state, b->l2_state);
 	out->r2_state = MAX(a->r2_state, b->r2_state);
 	out->left_x = MAX_ABS(a->left_x, b->left_x);
 	out->left_y = MAX_ABS(a->left_y, b->left_y);
 
-	// Pega os valores originais do analógico (escala de -32768 a 32767)
+	// 1. CORREÇÃO RAPID FIRE: Janela de 10 ticks para o console registrar o clique
+	if (rapid_fire_global && out->r2_state > 40) {
+		if ((zen_tick % 10) >= 5) {
+			out->r2_state = 0;
+		}
+	}
+
 	int32_t rx = (int32_t)MAX_ABS(a->right_x, b->right_x);
 	int32_t ry = (int32_t)MAX_ABS(a->right_y, b->right_y);
 
-	// SE O R2 FOR PRESSIONADO (TIRO), APLICA COMPENSAÇÃO FORTE
-	if (out->r2_state > 35) {
-		// Multiplicador de 150 para que o ajuste na tela (ex: 10) 
-		// tenha força real (1500) para vencer a deadzone do jogo.
+	// 2. STICKY AIM (Magnetic Assist): Tremor circular microscópico
+	if (sticky_aim_global && out->r2_state > 30) {
+		float angle = (float)zen_tick * 0.6f;
+		rx += (int32_t)(cosf(angle) * 750.0f);
+		ry += (int32_t)(sinf(angle) * 750.0f);
+	}
+
+	// 3. ANTI-DEADZONE: Vence a resistência do jogo
+	if (rx > 500) rx += anti_dz_global; else if (rx < -500) rx -= anti_dz_global;
+	if (ry > 500) ry += anti_dz_global; else if (ry < -500) ry -= anti_dz_global;
+
+	// 4. RECOIL CONTROL: Compensação multiplicada
+	if (out->r2_state > 40) {
 		ry += (int32_t)(recoil_v_global * 150);
 		rx += (int32_t)(recoil_h_global * 150);
 	}
 
-	// LIMITAÇÃO (CLAMPING): Impede que o valor ultrapasse os limites do PS5
-	// Isso evita o comportamento "estranho" de a mira travar ou bugar.
+	// LIMITAÇÃO (CLAMPING) FINAL
 	if (ry > 32767) ry = 32767;
 	if (ry < -32768) ry = -32768;
 	if (rx > 32767) rx = 32767;
