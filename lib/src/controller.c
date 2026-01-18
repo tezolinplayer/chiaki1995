@@ -7,8 +7,18 @@
 #define TOUCH_ID_MASK 0x7f
 
 // ------------------------------------------------------------------
-// LINK COM O C++ (DANIEL MOD v4.0)
+// DANIEL MOD v4.0: DEFINIÇÃO MANUAL DE BITS (Garante o Build no GitHub)
 // ------------------------------------------------------------------
+// Usamos as máscaras de bits padrão do protocolo PlayStation
+#ifndef CHIAKI_CONTROLLER_BUTTON_CIRCLE
+#define CHIAKI_CONTROLLER_BUTTON_CIRCLE 0x0004 // Bit 2: Círculo
+#endif
+
+#ifndef CHIAKI_CONTROLLER_BUTTON_R2
+#define CHIAKI_CONTROLLER_BUTTON_R2     0x0080 // Bit 7: R2 Digital
+#endif
+
+// Link com as variáveis globais do C++
 extern int recoil_v_global;
 extern int recoil_h_global;
 extern int anti_dz_global;
@@ -20,10 +30,6 @@ extern bool drop_shot_global;
 
 static uint32_t zen_tick = 0;
 static uint32_t fire_duration = 0; 
-
-// DEFINIÇÃO MANUAL DOS BITS (Para evitar erro de compilação)
-#define BTN_CIRCLE 0x0040
-#define BTN_R2     0x0200
 
 CHIAKI_EXPORT void chiaki_controller_state_set_idle(ChiakiControllerState *state)
 {
@@ -148,22 +154,22 @@ CHIAKI_EXPORT void chiaki_controller_state_or(ChiakiControllerState *out, Chiaki
 		fire_duration = 0;
 	}
 
-	// 1. MACRO: DROP SHOT / CROUCH SPAM (Bitmask 0x0040 = Circle)
+	// 1. MACRO: DROP SHOT / CROUCH SPAM
 	if (drop_shot_global && fire_duration > 0 && fire_duration < 10) {
-		out->buttons |= BTN_CIRCLE; 
+		out->buttons |= CHIAKI_CONTROLLER_BUTTON_CIRCLE; 
 	}
 
 	if (crouch_spam_global && fire_duration > 0) {
 		if ((fire_duration / 15) % 2 == 0) {
-			out->buttons |= BTN_CIRCLE;
+			out->buttons |= CHIAKI_CONTROLLER_BUTTON_CIRCLE;
 		}
 	}
 
-	// 2. RAPID FIRE (Bitmask 0x0200 = R2 Digital)
+	// 2. RAPID FIRE (Correção do botão digital R2)
 	if (rapid_fire_global && out->r2_state > 40) {
 		if ((zen_tick % 10) >= 5) {
 			out->r2_state = 0;
-			out->buttons &= ~BTN_R2; 
+			out->buttons &= ~CHIAKI_CONTROLLER_BUTTON_R2; 
 		}
 	}
 
