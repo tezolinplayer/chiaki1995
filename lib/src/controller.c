@@ -7,7 +7,7 @@
 #define TOUCH_ID_MASK 0x7f
 
 // ------------------------------------------------------------------
-// DANIEL MOD v4.2: DEFINIÇÃO MANUAL DE BITS (Segurança de Build)
+// DANIEL MOD v4.5: ESTABILIZAÇÃO ESTÁTICA (ESTILO XIM MATRIX)
 // ------------------------------------------------------------------
 #ifndef CHIAKI_CONTROLLER_BUTTON_CIRCLE
 #define CHIAKI_CONTROLLER_BUTTON_CIRCLE 0x0004 
@@ -56,7 +56,6 @@ CHIAKI_EXPORT void chiaki_controller_state_set_idle(ChiakiControllerState *state
 	state->orient_w = 1.0f;
 }
 
-// Funções de Touchpad preservadas para navegação no PS5
 CHIAKI_EXPORT int8_t chiaki_controller_state_start_touch(ChiakiControllerState *state, uint16_t x, uint16_t y)
 {
 	for(size_t i = 0; i < CHIAKI_CONTROLLER_TOUCHES_MAX; i++)
@@ -139,7 +138,7 @@ CHIAKI_EXPORT bool chiaki_controller_state_equals(ChiakiControllerState *a, Chia
 #define MAX_ABS(a, b) (ABS(a) > ABS(b) ? (a) : (b))
 
 // ------------------------------------------------------------------
-// MOTOR DE PROCESSAMENTO ELITE (DANIEL MOD v4.2)
+// MOTOR DE PROCESSAMENTO XIM-ULTRA (DANIEL MOD v4.5)
 // ------------------------------------------------------------------
 CHIAKI_EXPORT void chiaki_controller_state_or(ChiakiControllerState *out, ChiakiControllerState *a, ChiakiControllerState *b)
 {
@@ -151,26 +150,23 @@ CHIAKI_EXPORT void chiaki_controller_state_or(ChiakiControllerState *out, Chiaki
 	out->left_x = MAX_ABS(a->left_x, b->left_x);
 	out->left_y = MAX_ABS(a->left_y, b->left_y);
 
-	// Gerenciamento de Tempo de Disparo
 	if (out->r2_state > 40) {
 		fire_duration++;
 	} else {
 		fire_duration = 0;
 	}
 
-	// 1. MACRO: DROP SHOT (Deita nos primeiros 10 frames de tiro)
+	// 1. MACROS DE MOVIMENTAÇÃO
 	if (drop_shot_global && fire_duration > 0 && fire_duration < 10) {
 		out->buttons |= CHIAKI_CONTROLLER_BUTTON_CIRCLE; 
 	}
-
-	// 2. MACRO: CROUCH SPAM (Movimentação imprevisível)
 	if (crouch_spam_global && fire_duration > 0) {
 		if ((fire_duration / 15) % 2 == 0) {
 			out->buttons |= CHIAKI_CONTROLLER_BUTTON_CIRCLE;
 		}
 	}
 
-	// 3. RAPID FIRE (Janela de interrupção para armas semi-auto)
+	// 2. RAPID FIRE
 	if (rapid_fire_global && out->r2_state > 40) {
 		if ((zen_tick % 10) >= 5) {
 			out->r2_state = 0;
@@ -181,40 +177,42 @@ CHIAKI_EXPORT void chiaki_controller_state_or(ChiakiControllerState *out, Chiaki
 	int32_t rx = (int32_t)MAX_ABS(a->right_x, b->right_x);
 	int32_t ry = (int32_t)MAX_ABS(a->right_y, b->right_y);
 
-	// 4. STICKY AIM (Magnetismo de mira magnético)
+	// 3. STICKY AIM (Magnetismo Magnético)
 	if (sticky_aim_global && out->r2_state > 30) {
 		float angle = (float)zen_tick * 0.6f;
 		rx += (int32_t)(cosf(angle) * (float)sticky_power_global);
 		ry += (int32_t)(sinf(angle) * (float)sticky_power_global);
 	}
 
-	// 5. ANTI-DEADZONE (Resposta instantânea do analógico)
+	// 4. ANTI-DEADZONE
 	if (rx > 500) rx += anti_dz_global; else if (rx < -500) rx -= anti_dz_global;
 	if (ry > 500) ry += anti_dz_global; else if (ry < -500) ry -= anti_dz_global;
 
-	// 6. RECOIL ADAPTATIVO (SPRAY CURVE 3-STAGES)
-	if (fire_duration > 0) {
+	// 5. RECUO ESTÁTICO DE ALTA RESOLUÇÃO (SPRAY LOCK)
+	if (fire_duration > 2) { // Start Delay de 2 ticks (estilo XIM Matrix)
 		float multiplier = 1.0f;
 
-		// ESTÁGIO 1: Início do Spray (1-15 ticks) - Precisão Cirúrgica
+		// Cálculo da Curva de Fixação
 		if (fire_duration <= 15) {
-			multiplier = 1.0f; 
+			multiplier = 1.0f; // Estágio Inicial
 		} 
-		// ESTÁGIO 2: Meio do Pente (16-50 ticks) - O recuo sobe mais forte
-		else if (fire_duration > 15 && fire_duration <= 50) {
-			multiplier = 1.35f; // Aumento de 35% na força
+		else if (fire_duration <= 45) {
+			multiplier = 1.35f; // Transição Progressiva
 		} 
-		// ESTÁGIO 3: Final do Pente (51+ ticks) - Spray caótico
 		else {
-			multiplier = 1.65f; // Aumento de 65% na força
-			rx += (int32_t)(recoil_h_global * 50); // Compensação horizontal extra no fim
+			// STATIC LOCK: Trava o recuo em um valor constante de alta força
+			multiplier = 1.60f; 
+			
+			// Anti-Friction: Micro-tremor para vencer a "bolha" de resistência do jogo
+			if (zen_tick % 2 == 0) ry += 12; else ry -= 12;
+			rx += (int32_t)(recoil_h_global * 45); 
 		}
 
 		ry += (int32_t)(recoil_v_global * 150 * multiplier);
 		rx += (int32_t)(recoil_h_global * 150);
 	}
 
-	// CLAMPING (Segurança para não travar o controle)
+	// CLAMPING FINAL
 	if (ry > 32767) ry = 32767;
 	if (ry < -32768) ry = -32768;
 	if (rx > 32767) rx = 32767;
