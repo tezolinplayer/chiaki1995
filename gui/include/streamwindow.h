@@ -6,7 +6,7 @@
 #include <QMainWindow>
 #include "streamsession.h"
 
-// Forward declarations para agilizar a compilação no seu Xeon
+// Forward declarations para agilizar a compilação no seu Xeon E5-2690 v4
 class QLabel;
 class QSlider;
 class QCheckBox;
@@ -26,22 +26,26 @@ class StreamWindow: public QMainWindow
 		AVOpenGLWidget *av_widget;
 
 		// ------------------------------------------------------------------
-		// DANIEL MOD: COMPONENTES DA BOX "ESTILO CRONUS ZEN"
+		// DANIEL ZEN GHOST: COMPONENTES DA INTERFACE VISUAL
 		// ------------------------------------------------------------------
 		
-		// 1. Recoil Control (Vertical e Horizontal)
+		// 1. Recoil Control (Compensação de recuo)
 		QLabel  *label_v;
 		QLabel  *label_h;
 		QSlider *slider_v;
 		QSlider *slider_h;
 
-		// 2. Anti-Deadzone (Vence a zona morta do jogo)
+		// 2. Anti-Deadzone (Vence a resistência inicial do jogo)
 		QLabel  *label_anti_dz;
 		QSlider *slider_anti_dz;
 
-		// 3. Funções Especiais (Sticky Aim e Rapid Fire)
-		QCheckBox *check_sticky_aim; // Ajuda de mira magnética
-		QCheckBox *check_rapid_fire; // Tiro rápido para semi-automáticas
+		// 3. Magnetismo / Sticky Aim (Força do tremor para Aim Assist)
+		QLabel  *label_sticky_power;
+		QSlider *slider_sticky_power;
+
+		// 4. Funções Especiais (Ativar/Desativar)
+		QCheckBox *check_sticky_aim; // Liga/Desliga o Magnetismo
+		QCheckBox *check_rapid_fire; // Liga/Desliga o Tiro Rápido
 
 		// Variáveis de Estado Interno
 		int recoil_v = 0;
