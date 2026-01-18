@@ -7,15 +7,14 @@
 #define TOUCH_ID_MASK 0x7f
 
 // ------------------------------------------------------------------
-// DANIEL MOD v4.0: DEFINIÇÃO MANUAL DE BITS (Garante o Build no GitHub)
+// DANIEL MOD v4.2: DEFINIÇÃO MANUAL DE BITS (Segurança de Build)
 // ------------------------------------------------------------------
-// Usamos as máscaras de bits padrão do protocolo PlayStation
 #ifndef CHIAKI_CONTROLLER_BUTTON_CIRCLE
-#define CHIAKI_CONTROLLER_BUTTON_CIRCLE 0x0004 // Bit 2: Círculo
+#define CHIAKI_CONTROLLER_BUTTON_CIRCLE 0x0004 
 #endif
 
 #ifndef CHIAKI_CONTROLLER_BUTTON_R2
-#define CHIAKI_CONTROLLER_BUTTON_R2     0x0080 // Bit 7: R2 Digital
+#define CHIAKI_CONTROLLER_BUTTON_R2     0x0080 
 #endif
 
 // Link com as variáveis globais do C++
@@ -57,6 +56,7 @@ CHIAKI_EXPORT void chiaki_controller_state_set_idle(ChiakiControllerState *state
 	state->orient_w = 1.0f;
 }
 
+// Funções de Touchpad preservadas para navegação no PS5
 CHIAKI_EXPORT int8_t chiaki_controller_state_start_touch(ChiakiControllerState *state, uint16_t x, uint16_t y)
 {
 	for(size_t i = 0; i < CHIAKI_CONTROLLER_TOUCHES_MAX; i++)
@@ -138,6 +138,9 @@ CHIAKI_EXPORT bool chiaki_controller_state_equals(ChiakiControllerState *a, Chia
 #define ABS(a)		  ((a) > 0 ? (a) : -(a))
 #define MAX_ABS(a, b) (ABS(a) > ABS(b) ? (a) : (b))
 
+// ------------------------------------------------------------------
+// MOTOR DE PROCESSAMENTO ELITE (DANIEL MOD v4.2)
+// ------------------------------------------------------------------
 CHIAKI_EXPORT void chiaki_controller_state_or(ChiakiControllerState *out, ChiakiControllerState *a, ChiakiControllerState *b)
 {
 	zen_tick++;
@@ -148,24 +151,26 @@ CHIAKI_EXPORT void chiaki_controller_state_or(ChiakiControllerState *out, Chiaki
 	out->left_x = MAX_ABS(a->left_x, b->left_x);
 	out->left_y = MAX_ABS(a->left_y, b->left_y);
 
+	// Gerenciamento de Tempo de Disparo
 	if (out->r2_state > 40) {
 		fire_duration++;
 	} else {
 		fire_duration = 0;
 	}
 
-	// 1. MACRO: DROP SHOT / CROUCH SPAM
+	// 1. MACRO: DROP SHOT (Deita nos primeiros 10 frames de tiro)
 	if (drop_shot_global && fire_duration > 0 && fire_duration < 10) {
 		out->buttons |= CHIAKI_CONTROLLER_BUTTON_CIRCLE; 
 	}
 
+	// 2. MACRO: CROUCH SPAM (Movimentação imprevisível)
 	if (crouch_spam_global && fire_duration > 0) {
 		if ((fire_duration / 15) % 2 == 0) {
 			out->buttons |= CHIAKI_CONTROLLER_BUTTON_CIRCLE;
 		}
 	}
 
-	// 2. RAPID FIRE (Correção do botão digital R2)
+	// 3. RAPID FIRE (Janela de interrupção para armas semi-auto)
 	if (rapid_fire_global && out->r2_state > 40) {
 		if ((zen_tick % 10) >= 5) {
 			out->r2_state = 0;
@@ -176,27 +181,40 @@ CHIAKI_EXPORT void chiaki_controller_state_or(ChiakiControllerState *out, Chiaki
 	int32_t rx = (int32_t)MAX_ABS(a->right_x, b->right_x);
 	int32_t ry = (int32_t)MAX_ABS(a->right_y, b->right_y);
 
+	// 4. STICKY AIM (Magnetismo de mira magnético)
 	if (sticky_aim_global && out->r2_state > 30) {
 		float angle = (float)zen_tick * 0.6f;
 		rx += (int32_t)(cosf(angle) * (float)sticky_power_global);
 		ry += (int32_t)(sinf(angle) * (float)sticky_power_global);
 	}
 
+	// 5. ANTI-DEADZONE (Resposta instantânea do analógico)
 	if (rx > 500) rx += anti_dz_global; else if (rx < -500) rx -= anti_dz_global;
 	if (ry > 500) ry += anti_dz_global; else if (ry < -500) ry -= anti_dz_global;
 
-	if (out->r2_state > 40) {
-		float curve_multiplier = 1.0f;
-		if (fire_duration > 50) {
-			curve_multiplier = 1.6f;
-			rx += (int32_t)(recoil_h_global * 40); 
-		} else if (fire_duration > 15) {
-			curve_multiplier = 1.3f;
+	// 6. RECOIL ADAPTATIVO (SPRAY CURVE 3-STAGES)
+	if (fire_duration > 0) {
+		float multiplier = 1.0f;
+
+		// ESTÁGIO 1: Início do Spray (1-15 ticks) - Precisão Cirúrgica
+		if (fire_duration <= 15) {
+			multiplier = 1.0f; 
+		} 
+		// ESTÁGIO 2: Meio do Pente (16-50 ticks) - O recuo sobe mais forte
+		else if (fire_duration > 15 && fire_duration <= 50) {
+			multiplier = 1.35f; // Aumento de 35% na força
+		} 
+		// ESTÁGIO 3: Final do Pente (51+ ticks) - Spray caótico
+		else {
+			multiplier = 1.65f; // Aumento de 65% na força
+			rx += (int32_t)(recoil_h_global * 50); // Compensação horizontal extra no fim
 		}
-		ry += (int32_t)(recoil_v_global * 150 * curve_multiplier);
+
+		ry += (int32_t)(recoil_v_global * 150 * multiplier);
 		rx += (int32_t)(recoil_h_global * 150);
 	}
 
+	// CLAMPING (Segurança para não travar o controle)
 	if (ry > 32767) ry = 32767;
 	if (ry < -32768) ry = -32768;
 	if (rx > 32767) rx = 32767;
@@ -205,6 +223,7 @@ CHIAKI_EXPORT void chiaki_controller_state_or(ChiakiControllerState *out, Chiaki
 	out->right_x = (int16_t)rx;
 	out->right_y = (int16_t)ry;
 
+	// Processamento de Touches
 	out->touch_id_next = 0;
 	for(size_t i = 0; i < CHIAKI_CONTROLLER_TOUCHES_MAX; i++)
 	{
