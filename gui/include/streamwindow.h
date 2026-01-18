@@ -7,7 +7,9 @@
 
 #include "streamsession.h"
 
+// Forward declarations para agilizar a compilação no seu Xeon
 class QLabel;
+class QSlider;
 class AVOpenGLWidget;
 
 class StreamWindow: public QMainWindow
@@ -25,11 +27,16 @@ class StreamWindow: public QMainWindow
 		AVOpenGLWidget *av_widget;
 
 		// ------------------------------------------------------------------
-		// MODIFICAÇÃO DANIEL: VARIÁVEIS DE RECOIL
+		// DANIEL MOD: COMPONENTES DA RECOIL BOX
 		// ------------------------------------------------------------------
-		int recoil_v = 0;      // Força da compensação Vertical (Y)
-		int recoil_h = 0;      // Força da compensação Horizontal (X)
-		bool is_firing = false; // Monitora se o gatilho de tiro está pressionado
+		QLabel *label_v;        // Texto que mostra o valor Vertical
+		QLabel *label_h;        // Texto que mostra o valor Horizontal
+		QSlider *slider_v;      // Barra de ajuste para Recoil Vertical
+		QSlider *slider_h;      // Barra de ajuste para Recoil Horizontal
+		
+		int recoil_v = 0;       // Backup local do valor Vertical
+		int recoil_h = 0;       // Backup local do valor Horizontal
+		bool is_firing = false; // Estado do gatilho R2
 
 		void Init();
 		void UpdateVideoTransform();
