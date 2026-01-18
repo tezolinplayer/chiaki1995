@@ -6,12 +6,13 @@
 #include <QMainWindow>
 #include "streamsession.h"
 
-// Forward declarations para manter o build rápido no seu Xeon
+// Forward declarations para manter o build rápido no seu Xeon E5-2690 v4
 class QLabel;
 class QSlider;
 class QCheckBox;
 class QComboBox;
 class QPushButton;
+class QTcpServer;      // Necessário para a Ponte Web (Celular)
 class AVOpenGLWidget;
 
 class StreamWindow: public QMainWindow
@@ -28,42 +29,48 @@ class StreamWindow: public QMainWindow
 		AVOpenGLWidget *av_widget;
 
 		// ------------------------------------------------------------------
-		// DANIEL ZEN GHOST v3.0: COMPONENTES DA INTERFACE
+		// DANIEL ZEN GHOST v4.0: COMPONENTES DA INTERFACE
 		// ------------------------------------------------------------------
 		
-		// 1. Recoil Control
+		// 1. Recoil Control (Compensação de Recuo)
 		QLabel  *label_v;
 		QLabel  *label_h;
 		QSlider *slider_v;
 		QSlider *slider_h;
 
-		// 2. Anti-Deadzone
+		// 2. Anti-Deadzone e Magnetismo (Aim Assist)
 		QLabel  *label_anti_dz;
 		QSlider *slider_anti_dz;
-
-		// 3. Magnetismo / Sticky Aim
 		QLabel  *label_sticky_power;
 		QSlider *slider_sticky_power;
+
+		// 3. Macros de Movimentação (Elite Tech)
+		QCheckBox *check_crouch_spam; // Agachar/Levantar rápido
+		QCheckBox *check_drop_shot;   // Deitar ao atirar
 
 		// 4. Funções Especiais e Indicadores
 		QCheckBox *check_sticky_aim;
 		QCheckBox *check_rapid_fire;
-		QLabel    *label_rapid_status; // Indica visualmente se o Rapid Fire está ON
+		QLabel    *label_rapid_status; // Indicador visual na tela
 
 		// 5. Sistema de Perfis (Salvar/Carregar presets de armas)
-		QComboBox   *combo_profiles;   // Lista de armas (M416, Beryl, etc)
-		QPushButton *btn_save_profile; // Botão para salvar o preset atual
+		QComboBox   *combo_profiles;
+		QPushButton *btn_save_profile;
+
+		// 6. Ponte Web (Controle Remoto via Celular)
+		QTcpServer *web_server;
 
 		// Variáveis de Estado Interno
 		int recoil_v = 0;
 		int recoil_h = 0;
 		bool is_firing = false;
 
-		// Métodos de Lógica de Perfil
+		// Métodos de Lógica
 		void Init();
 		void UpdateVideoTransform();
 		void SaveProfile(const QString &name);
 		void LoadProfile(const QString &name);
+		void StartWebBridge(); // Inicia o servidor para o celular
 
 	protected:
 		void keyPressEvent(QKeyEvent *event) override;
@@ -80,6 +87,7 @@ class StreamWindow: public QMainWindow
 		void SessionQuit(ChiakiQuitReason reason, const QString &reason_str);
 		void LoginPINRequested(bool incorrect);
 		void ToggleFullscreen();
+		void OnNewWebConnection(); // Trata comandos vindos do celular
 };
 
 #endif // CHIAKI_GUI_STREAMWINDOW_H
