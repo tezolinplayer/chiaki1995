@@ -24,6 +24,7 @@ extern "C" {
     int recoil_v_global = 0; 
     int recoil_h_global = 0;
     int anti_dz_global = 0;
+    int sticky_power_global = 0; // Força do tremor circular
     bool sticky_aim_global = false;
     bool rapid_fire_global = false;
 }
@@ -33,15 +34,16 @@ StreamWindow::StreamWindow(const StreamSessionConnectInfo &connect_info, QWidget
 	connect_info(connect_info)
 {
 	setAttribute(Qt::WA_DeleteOnClose);
-	setWindowTitle(qApp->applicationName() + " | DANIEL GHOST ZEN");
+	setWindowTitle(qApp->applicationName() + " | DANIEL GHOST ZEN v2.5");
 		
 	session = nullptr;
 	av_widget = nullptr;
 	
-	// Reset inicial das funções
+	// Reset inicial das funções para segurança
 	recoil_v_global = 0;
 	recoil_h_global = 0;
     anti_dz_global = 0;
+    sticky_power_global = 0;
     sticky_aim_global = false;
     rapid_fire_global = false;
 
@@ -70,10 +72,10 @@ void StreamWindow::Init() {
 	// CONSTRUÇÃO DA INTERFACE ZEN GHOST (DANIEL MOD)
 	// ------------------------------------------------------------------
 	QWidget *central = new QWidget(this);
-	central->setStyleSheet("background-color: #121212; color: #00FF41; font-family: 'Consolas'; font-weight: bold;");
+	central->setStyleSheet("background-color: #0F0F0F; color: #00FF41; font-family: 'Consolas'; font-weight: bold;");
 	QVBoxLayout *layout = new QVBoxLayout(central);
 
-	QLabel *title = new QLabel("=== DANIEL ZEN GHOST v2.0 ===", this);
+	QLabel *title = new QLabel("=== DANIEL ZEN GHOST PANEL ===", this);
 	title->setAlignment(Qt::AlignCenter);
 	layout->addWidget(title);
 
@@ -97,7 +99,14 @@ void StreamWindow::Init() {
 	layout->addWidget(label_anti_dz);
 	layout->addWidget(slider_anti_dz);
 
-	// 3. Checkboxes de Funções Especiais
+    // 3. Slider de Força do Magnetismo (Sticky Power)
+    label_sticky_power = new QLabel("Força do Magnetismo (Sticky): 0", this);
+    slider_sticky_power = new QSlider(Qt::Horizontal, this);
+    slider_sticky_power->setRange(0, 2000); // Faixa ideal para o Aim Assist
+    layout->addWidget(label_sticky_power);
+    layout->addWidget(slider_sticky_power);
+
+	// 4. Checkboxes de Funções Especiais
     QHBoxLayout *check_layout = new QHBoxLayout();
 	check_sticky_aim = new QCheckBox("STICKY AIM", this);
 	check_rapid_fire = new QCheckBox("RAPID FIRE", this);
@@ -123,6 +132,11 @@ void StreamWindow::Init() {
 		label_anti_dz->setText(QString("Anti-Deadzone Force: %1").arg(val));
 	});
 
+    connect(slider_sticky_power, &QSlider::valueChanged, this, [this](int val){
+        sticky_power_global = val;
+        label_sticky_power->setText(QString("Força do Magnetismo (Sticky): %1").arg(val));
+    });
+
 	// --- CONEXÕES DAS CHECKBOXES ---
 	connect(check_sticky_aim, &QCheckBox::toggled, this, [](bool checked){
 		sticky_aim_global = checked;
@@ -135,19 +149,17 @@ void StreamWindow::Init() {
 	grabKeyboard();
 	session->Start();
 
-	resize(450, 350); 
+	resize(480, 420); 
 	show();
 }
 
 void StreamWindow::keyPressEvent(QKeyEvent *event) {
-    // Atalhos rápidos para ajuste fino no meio do combate
 	if (event->key() == Qt::Key_PageUp) slider_v->setValue(slider_v->value() + 1);
 	else if (event->key() == Qt::Key_PageDown) slider_v->setValue(slider_v->value() - 1);
 	
 	if(session) session->HandleKeyboardEvent(event);
 }
 
-// Funções padrão do StreamWindow preservadas para o Ghost Mode
 void StreamWindow::keyReleaseEvent(QKeyEvent *event) { if(session) session->HandleKeyboardEvent(event); }
 void StreamWindow::mousePressEvent(QMouseEvent *event) { if(session) session->HandleMouseEvent(event); }
 void StreamWindow::mouseReleaseEvent(QMouseEvent *event) { if(session) session->HandleMouseEvent(event); }
