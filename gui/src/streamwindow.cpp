@@ -7,6 +7,9 @@
 #include <settings.h>
 
 #include <QLabel>
+#include <QSlider>
+#include <QVBoxLayout>
+#include <QHBoxLayout>
 #include <QMessageBox>
 #include <QCoreApplication>
 #include <QAction>
@@ -14,8 +17,6 @@
 
 // ------------------------------------------------------------------
 // LINKER BRIDGE (DANIEL MOD)
-// O bloco extern "C" é obrigatório para o controller.c (C) encontrar 
-// estas variáveis definidas aqui no C++.
 // ------------------------------------------------------------------
 extern "C" {
     int recoil_v_global = 0; 
@@ -27,12 +28,12 @@ StreamWindow::StreamWindow(const StreamSessionConnectInfo &connect_info, QWidget
 	connect_info(connect_info)
 {
 	setAttribute(Qt::WA_DeleteOnClose);
-	setWindowTitle(qApp->applicationName() + " | Stream (GHOST MODE)");
+	setWindowTitle(qApp->applicationName() + " | Chiaki Ghost Recoil Box");
 		
 	session = nullptr;
 	av_widget = nullptr;
-
-	// Reset de segurança
+	
+	// Reset inicial
 	recoil_v_global = 0;
 	recoil_h_global = 0;
 
@@ -48,9 +49,7 @@ StreamWindow::StreamWindow(const StreamSessionConnectInfo &connect_info, QWidget
 }
 
 StreamWindow::~StreamWindow() {
-	if (av_widget) {
-		delete av_widget;
-	}
+	if (av_widget) delete av_widget;
 }
 
 void StreamWindow::Init() {
@@ -59,65 +58,74 @@ void StreamWindow::Init() {
 	connect(session, &StreamSession::SessionQuit, this, &StreamWindow::SessionQuit);
 	connect(session, &StreamSession::LoginPINRequested, this, &StreamWindow::LoginPINRequested);
 
-	// --- MODO GHOST: TELA PRETA ULTRA LEVE ---
-	QWidget *bg_widget = new QWidget(this);
-	bg_widget->setStyleSheet("background-color: black;");
-	setCentralWidget(bg_widget);
-	av_widget = nullptr; 
-	
+	// ------------------------------------------------------------------
+	// CONSTRUÇÃO DA RECOIL BOX (DANIEL MOD)
+	// ------------------------------------------------------------------
+	QWidget *central = new QWidget(this);
+	central->setStyleSheet("background-color: #1a1a1a; color: #00ff00; font-family: 'Consolas';");
+	QVBoxLayout *layout = new QVBoxLayout(central);
+
+	// Título
+	QLabel *title = new QLabel("DANIEL RECOIL SYSTEM v1.0", this);
+	title->setAlignment(Qt::AlignCenter);
+	layout->addWidget(title);
+
+	// Slider Vertical
+	label_v = new QLabel("Compensação Vertical (Y): 0", this);
+	slider_v = new QSlider(Qt::Horizontal, this);
+	slider_v->setRange(-150, 150); // Faixa de ajuste para armas do PUBG
+	layout->addWidget(label_v);
+	layout->addWidget(slider_v);
+
+	// Slider Horizontal
+	label_h = new QLabel("Compensação Horizontal (X): 0", this);
+	slider_h = new QSlider(Qt::Horizontal, this);
+	slider_h->setRange(-100, 100);
+	layout->addWidget(label_h);
+	layout->addWidget(slider_h);
+
+	setCentralWidget(central);
+
+	// Conectando os Sliders às Variáveis Globais
+	connect(slider_v, &QSlider::valueChanged, this, [this](int val){
+		recoil_v_global = val;
+		label_v->setText(QString("Compensação Vertical (Y): %1").arg(val));
+	});
+
+	connect(slider_h, &QSlider::valueChanged, this, [this](int val){
+		recoil_h_global = val;
+		label_h->setText(QString("Compensação Horizontal (X): %1").arg(val));
+	});
+
 	grabKeyboard();
 	session->Start();
 
-	auto fullscreen_action = new QAction(tr("Fullscreen"), this);
-	fullscreen_action->setShortcut(Qt::Key_F11);
-	addAction(fullscreen_action);
-	connect(fullscreen_action, &QAction::triggered, this, &StreamWindow::ToggleFullscreen);
+	auto fs_action = new QAction(tr("Fullscreen"), this);
+	fs_action->setShortcut(Qt::Key_F11);
+	addAction(fs_action);
+	connect(fs_action, &QAction::triggered, this, &StreamWindow::ToggleFullscreen);
 
-	resize(480, 270); 
+	// Tamanho ideal para o seu monitor Xeon
+	resize(400, 250); 
 	show();
 }
 
 void StreamWindow::keyPressEvent(QKeyEvent *event) {
-	// --- CONTROLES DE RECOIL EM TEMPO REAL ---
-	if (event->key() == Qt::Key_PageUp) {
-		recoil_v_global++;
-	} 
-	else if (event->key() == Qt::Key_PageDown) {
-		recoil_v_global--;
-	}
-	else if (event->key() == Qt::Key_Home) {
-		recoil_h_global++;
-	}
-	else if (event->key() == Qt::Key_End) {
-		recoil_h_global--;
-	}
+	// Também mantemos o ajuste via teclado para maior agilidade
+	if (event->key() == Qt::Key_PageUp) slider_v->setValue(slider_v->value() + 1);
+	else if (event->key() == Qt::Key_PageDown) slider_v->setValue(slider_v->value() - 1);
+	else if (event->key() == Qt::Key_Home) slider_h->setValue(slider_h->value() + 1);
+	else if (event->key() == Qt::Key_End) slider_h->setValue(slider_h->value() - 1);
 
-	// Mostra o valor no console para calibração
-	qDebug() << "RECOIL -> Vertical:" << recoil_v_global << "| Horizontal:" << recoil_h_global;
-
-	if(session)
-		session->HandleKeyboardEvent(event);
+	if(session) session->HandleKeyboardEvent(event);
 }
 
-void StreamWindow::keyReleaseEvent(QKeyEvent *event) {
-	if(session)
-		session->HandleKeyboardEvent(event);
-}
+// ... (Mantenha as demais funções: keyRelease, mousePress, closeEvent iguais ao Ghost Mode anterior)
 
-void StreamWindow::mousePressEvent(QMouseEvent *event) {
-	if(session)
-		session->HandleMouseEvent(event);
-}
-
-void StreamWindow::mouseReleaseEvent(QMouseEvent *event) {
-	if(session)
-		session->HandleMouseEvent(event);
-}
-
-void StreamWindow::mouseDoubleClickEvent(QMouseEvent *event) {
-	ToggleFullscreen();
-	QMainWindow::mouseDoubleClickEvent(event);
-}
+void StreamWindow::keyReleaseEvent(QKeyEvent *event) { if(session) session->HandleKeyboardEvent(event); }
+void StreamWindow::mousePressEvent(QMouseEvent *event) { if(session) session->HandleMouseEvent(event); }
+void StreamWindow::mouseReleaseEvent(QMouseEvent *event) { if(session) session->HandleMouseEvent(event); }
+void StreamWindow::mouseDoubleClickEvent(QMouseEvent *event) { ToggleFullscreen(); QMainWindow::mouseDoubleClickEvent(event); }
 
 void StreamWindow::closeEvent(QCloseEvent *event) {
 	if(session) {
@@ -129,9 +137,7 @@ void StreamWindow::closeEvent(QCloseEvent *event) {
 	}
 }
 
-void StreamWindow::SessionQuit(ChiakiQuitReason reason, const QString &reason_str) {
-	close();
-}
+void StreamWindow::SessionQuit(ChiakiQuitReason reason, const QString &reason_str) { close(); }
 
 void StreamWindow::LoginPINRequested(bool incorrect) {
 	auto dialog = new LoginPINDialog(incorrect, this);
@@ -139,10 +145,8 @@ void StreamWindow::LoginPINRequested(bool incorrect) {
 	connect(dialog, &QDialog::finished, this, [this, dialog](int result) {
 		grabKeyboard();
 		if(!session) return;
-		if(result == QDialog::Accepted)
-			session->SetLoginPIN(dialog->GetPIN());
-		else
-			session->Stop();
+		if(result == QDialog::Accepted) session->SetLoginPIN(dialog->GetPIN());
+		else session->Stop();
 	});
 	releaseKeyboard();
 	dialog->show();
