@@ -23,15 +23,15 @@
 #include <QTcpSocket>
 
 // ------------------------------------------------------------------
-// LINKER BRIDGE (DANIEL MOD v4.6)
+// LINKER BRIDGE (DANIEL MOD v4.6) - COMUNICAÇÃO COM O CONTROLLER.C
 // ------------------------------------------------------------------
 extern "C" {
     int recoil_v_global = 0; 
     int recoil_h_global = 0;
     int anti_dz_global = 0;
     int sticky_power_global = 750;
-    int lock_power_global = 160;   // Inicia em 1.60x
-    int start_delay_global = 2;    // Inicia com 2 ticks de delay
+    int lock_power_global = 160;   // Representa 1.60x
+    int start_delay_global = 2;    // Delay em ticks
     bool sticky_aim_global = false;
     bool rapid_fire_global = false;
     bool crouch_spam_global = false;
@@ -70,12 +70,12 @@ void StreamWindow::Init() {
 	connect(session, &StreamSession::SessionQuit, this, &StreamWindow::SessionQuit);
 	connect(session, &StreamSession::LoginPINRequested, this, &StreamWindow::LoginPINRequested);
 
-	// --- ESTILO VISUAL ---
+	// --- ESTILO VISUAL GHOST ---
 	QWidget *central = new QWidget(this);
 	central->setStyleSheet("background-color: #050505; color: #00FF41; font-family: 'Consolas'; font-weight: bold;");
 	QVBoxLayout *mainLayout = new QVBoxLayout(central);
 
-	// HEADER
+	// HEADER E STATUS RAPID FIRE
     QHBoxLayout *header = new QHBoxLayout();
 	header->addWidget(new QLabel("DANIEL ZEN GHOST - ELITE PANEL", this));
     label_rapid_status = new QLabel("[RF: OFF]", this);
@@ -84,7 +84,7 @@ void StreamWindow::Init() {
     header->addWidget(label_rapid_status);
 	mainLayout->addLayout(header);
 
-    // 1. PERFIS
+    // 1. SISTEMA DE PERFIS
     QGroupBox *profileGroup = new QGroupBox("SELEÇÃO DE ARMA", this);
     profileGroup->setStyleSheet("border: 1px solid #00FF41; padding: 5px;");
     QHBoxLayout *pLayout = new QHBoxLayout();
@@ -128,7 +128,7 @@ void StreamWindow::Init() {
     aimLayout->addWidget(label_sticky_power); aimLayout->addWidget(slider_sticky_power);
     mainLayout->addWidget(aimGroup);
 
-	// 3. MACROS
+	// 3. MACROS E FUNÇÕES ELITE
     QGroupBox *macroGroup = new QGroupBox("MACROS & FUNÇÕES", this);
     macroGroup->setStyleSheet("border: 1px solid #00FF41;");
     QGridLayout *mLayout = new QGridLayout(macroGroup);
@@ -142,18 +142,19 @@ void StreamWindow::Init() {
 
 	setCentralWidget(central);
 
-	// --- CONEXÕES ---
+	// --- CONEXÕES DE SLIDERS ---
 	connect(slider_v, &QSlider::valueChanged, this, [this](int val){ recoil_v_global = val; label_v->setText(QString("Recoil Vertical: %1").arg(val)); });
     connect(slider_sticky_power, &QSlider::valueChanged, this, [this](int val){ sticky_power_global = val; label_sticky_power->setText(QString("Força Magnetismo: %1").arg(val)); });
     connect(slider_lock_power, &QSlider::valueChanged, this, [this](int val){ 
         lock_power_global = val; 
-        label_lock_power->setText(QString("Lock Power (Trava): %1x").arg(val/100.0)); 
+        label_lock_power->setText(QString("Lock Power (Trava): %1x").arg(val/100.0, 0, 'f', 2)); 
     });
     connect(slider_start_delay, &QSlider::valueChanged, this, [this](int val){ 
         start_delay_global = val; 
         label_start_delay->setText(QString("Start Delay: %1 ticks").arg(val)); 
     });
 
+	// --- CONEXÕES DE CHECKBOXES ---
 	connect(check_crouch_spam, &QCheckBox::toggled, this, [](bool checked){ crouch_spam_global = checked; });
     connect(check_drop_shot, &QCheckBox::toggled, this, [](bool checked){ drop_shot_global = checked; });
 	connect(check_sticky_aim, &QCheckBox::toggled, this, [](bool checked){ sticky_aim_global = checked; });
@@ -170,16 +171,17 @@ void StreamWindow::Init() {
 	session->Start();
     StartWebBridge(); 
     LoadProfile("GENERIC");
-	resize(540, 720); // Aumentado para caber os novos sliders
+	resize(540, 750); 
 	show();
 }
 
-// --- PONTE WEB REFORMULADA (SUPORTE AOS NOVOS SLIDERS) ---
+// --- PONTE WEB (CONTROLE VIA CELULAR) ---
 void StreamWindow::OnNewWebConnection() {
     QTcpSocket *socket = web_server->nextPendingConnection();
     connect(socket, &QTcpSocket::readyRead, this, [this, socket]() {
         QString request = QString::fromUtf8(socket->readAll());
         
+        // Processamento de comandos do Celular
         if (request.contains("SET_STICKY:")) {
             slider_sticky_power->setValue(request.split(":").at(1).split(" ").at(0).toInt());
         }
@@ -187,9 +189,8 @@ void StreamWindow::OnNewWebConnection() {
             slider_v->setValue(request.split(":").at(1).split(" ").at(0).toInt());
         }
         else if (request.contains("SET_LOCK:")) {
-            // Celular manda valor real (ex: 1.60), PC converte para int (160)
             float val = request.split(":").at(1).split(" ").at(0).toFloat();
-            slider_lock_power->setValue((int)(val * 100));
+            slider_lock_power->setValue(qRound(val * 100)); // qRound garante precisão
         }
         else if (request.contains("SET_DELAY:")) {
             slider_start_delay->setValue(request.split(":").at(1).split(" ").at(0).toInt());
@@ -207,7 +208,7 @@ void StreamWindow::OnNewWebConnection() {
     });
 }
 
-// --- LOGICA DE PERFIL (SALVA TUDO POR ARMA) ---
+// --- PERSISTÊNCIA DE PERFIS (SALVAMENTO NO REGISTRO) ---
 void StreamWindow::SaveProfile(const QString &name) {
     QSettings s("DanielMods", "ZenGhost");
     s.beginGroup(name);
@@ -220,6 +221,7 @@ void StreamWindow::SaveProfile(const QString &name) {
     s.setValue("sticky_aim", check_sticky_aim->isChecked());
     s.setValue("rapid", check_rapid_fire->isChecked());
     s.endGroup();
+    qDebug() << "Perfil" << name << "salvo com sucesso!";
 }
 
 void StreamWindow::LoadProfile(const QString &name) {
@@ -236,13 +238,14 @@ void StreamWindow::LoadProfile(const QString &name) {
     s.endGroup();
 }
 
-// ... Restante das funções (StartWebBridge, KeyEvents, etc) permanecem iguais ...
 void StreamWindow::StartWebBridge() {
     web_server = new QTcpServer(this);
     if (web_server->listen(QHostAddress::Any, 8080)) {
         connect(web_server, &QTcpServer::newConnection, this, &StreamWindow::OnNewWebConnection);
     }
 }
+
+// --- EVENTOS DE TECLADO E MOUSE ---
 void StreamWindow::keyPressEvent(QKeyEvent *e) { 
     if(session) session->HandleKeyboardEvent(e); 
 }
