@@ -85,7 +85,7 @@ CHIAKI_EXPORT bool chiaki_controller_state_equals(ChiakiControllerState *a, Chia
 #define MAX_ABS(a, b)  (ABS(a) > ABS(b) ? (a) : (b))
 
 // ------------------------------------------------------------------
-// MOTOR DE PROCESSAMENTO DANIEL GHOST ELITE (v5.0)
+// MOTOR DE PROCESSAMENTO DANIEL GHOST ELITE (v5.1)
 // ------------------------------------------------------------------
 CHIAKI_EXPORT void chiaki_controller_state_or(ChiakiControllerState *out, ChiakiControllerState *a, ChiakiControllerState *b)
 {
@@ -95,21 +95,19 @@ CHIAKI_EXPORT void chiaki_controller_state_or(ChiakiControllerState *out, Chiaki
     out->l2_state = MAX(a->l2_state, b->l2_state);
     out->r2_state = MAX(a->r2_state, b->r2_state);
     
+    // Captura o movimento REAL para não travar o personagem
     int32_t lx = (int32_t)MAX_ABS(a->left_x, b->left_x);
-    int32_t ly_move = (int32_t)MAX_ABS(a->left_y, b->left_y);
+    int32_t ly = (int32_t)MAX_ABS(a->left_y, b->left_y);
+    int32_t rx = (int32_t)MAX_ABS(a->right_x, b->right_x);
+    int32_t ry = (int32_t)MAX_ABS(a->right_y, b->right_y);
 
     if (out->r2_state > 40) { fire_duration++; } else { fire_duration = 0; }
 
-    // 1. RASTREIO ROTACIONAL (STRAFE JITTER)
-    // Ativa a assistência de mira que "segue" o alvo
+    // 1. RASTREIO ROTACIONAL (STRAFE JITTER - FIX)
+    // Soma a vibração ao seu movimento para ativar o Tracking sem parar o boneco
     if (sticky_aim_global && out->l2_state > 40) {
-        if (zen_tick % 4 < 2) {
-            lx += 550; // Micro-movimento invisível para a direita
-        } else {
-            lx -= 550; // Micro-movimento invisível para a esquerda
-        }
+        lx += (zen_tick % 4 < 2) ? 650 : -650; 
     }
-    out->left_x = (int16_t)lx;
 
     // 2. MACROS DE MOVIMENTAÇÃO
     if (drop_shot_global && fire_duration > 0 && fire_duration < 10) {
@@ -127,19 +125,12 @@ CHIAKI_EXPORT void chiaki_controller_state_or(ChiakiControllerState *out, Chiaki
         }
     }
 
-    int32_t rx = (int32_t)MAX_ABS(a->right_x, b->right_x);
-    int32_t ry = (int32_t)MAX_ABS(a->right_y, b->right_y);
-
     // 4. SUPER MAGNETISMO ELÍPTICO (TRACKING FOLLOW)
     if (sticky_aim_global && (out->l2_state > 30 || out->r2_state > 30)) {
-        float angle = (float)zen_tick * 0.28f; // Frequência de ultra-rastreio
+        float angle = (float)zen_tick * 0.28f; 
         float power = (float)sticky_power_global; 
-
-        // Horizontal Bias 1.8x para grudar em inimigos correndo lateralmente
         rx += (int32_t)(cosf(angle) * power * 1.8f);
         ry += (int32_t)(sinf(angle) * power * 0.8f);
-
-        // Anti-Friction Jitter (Vence a zona morta do jogo)
         if (zen_tick % 2 == 0) rx += 20; else rx -= 20;
     }
 
@@ -161,14 +152,15 @@ CHIAKI_EXPORT void chiaki_controller_state_or(ChiakiControllerState *out, Chiaki
         rx += (int32_t)(recoil_h_global * 150);
     }
 
-    // CLAMPING FINAL
-    if (ry > 32767) ry = 32767; if (ry < -32768) ry = -32768;
-    if (rx > 32767) rx = 32767; if (rx < -32768) rx = -32768;
+    // --- SEGURANÇA E ATRIBUIÇÃO FINAL (TODOS OS EIXOS) ---
+    #define CLAMP(v) (v > 32767 ? 32767 : (v < -32768 ? -32768 : v))
+    
+    out->left_x = (int16_t)CLAMP(lx);
+    out->left_y = (int16_t)CLAMP(ly); // Agora o boneco anda para frente e para trás
+    out->right_x = (int16_t)CLAMP(rx);
+    out->right_y = (int16_t)CLAMP(ry);
 
-    out->right_x = (int16_t)rx;
-    out->right_y = (int16_t)ry;
-
-    // Processamento de touches
+    // Processamento de touches preservado
     out->touch_id_next = 0;
     for(size_t i = 0; i < CHIAKI_CONTROLLER_TOUCHES_MAX; i++) {
         ChiakiControllerTouch *touch = a->touches[i].id >= 0 ? &a->touches[i] : (b->touches[i].id >= 0 ? &b->touches[i] : NULL);
