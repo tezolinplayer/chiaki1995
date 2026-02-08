@@ -13,24 +13,27 @@
 #include <QMouseEvent>
 #include <QSettings>
 
-// --- AQUI ESTÁ O SEGREDO: CRIANDO AS VARIÁVEIS PARA O MOTOR ---
+// --- VARIÁVEIS COMPARTILHADAS ---
 extern "C" {
     int v_stage1 = 0, h_stage1 = 0;
     int v_stage2 = 0, h_stage2 = 0;
     int v_stage3 = 0, h_stage3 = 0;
-    int anti_dz_global = 0;
-    int sticky_power_global = 750;
-    int lock_power_global = 100;
-    int start_delay_global = 2;
-    bool sticky_aim_global = false;
+    int anti_dz_global = 0, sticky_power_global = 750;
+    int lock_power_global = 100, start_delay_global = 2;
+    bool sticky_aim_global = false, rapid_fire_global = false;
 }
 
-StreamWindow::StreamWindow(const StreamSessionConnectInfo &connect_info, QWidget *parent)
-    : QMainWindow(parent), connect_info(connect_info) 
+StreamWindow::StreamWindow(const StreamSessionConnectInfo &info, QWidget *parent) 
+    : QMainWindow(parent), connect_info(info) 
 {
     setAttribute(Qt::WA_DeleteOnClose);
     setWindowTitle("DANIEL GHOST ZEN ELITE | v5.5");
-    session = new StreamSession(connect_info, this);
+    
+    // --- FIX CRÍTICO PARA ANALÓGICOS ---
+    setMouseTracking(true); // Permite mirar sem clicar
+    setFocusPolicy(Qt::StrongFocus); // Garante que o WASD funcione
+    
+    session = new StreamSession(info, this);
     connect(session, &StreamSession::SessionQuit, this, &StreamWindow::SessionQuit);
     Init();
 }
@@ -41,91 +44,85 @@ StreamWindow::~StreamWindow() {
 
 void StreamWindow::Init() {
     QWidget *central = new QWidget(this);
+    central->setMouseTracking(true); // Reforço do tracking
     central->setStyleSheet("background-color: #050505; color: #00FF41; font-family: 'Consolas'; font-weight: bold;");
-    QVBoxLayout *mainLayout = new QVBoxLayout(central);
+    QVBoxLayout *main = new QVBoxLayout(central);
 
     // 1. SELEÇÃO DE ARMA
-    QGroupBox *topBox = new QGroupBox("PERFIL DA ARMA", this);
-    topBox->setStyleSheet("border: 1px solid #00FF41; padding: 5px;");
+    QGroupBox *topBox = new QGroupBox("PERFIL DANIEL GHOST", this);
     QHBoxLayout *topLay = new QHBoxLayout(topBox);
     QComboBox *combo = new QComboBox(this);
     combo->addItems({"M416", "BERYL", "SCAR-L", "GENERIC"});
     combo->setStyleSheet("background-color: #111; color: #00FF41; border: 1px solid #00FF41;");
     QPushButton *btnSave = new QPushButton("SALVAR", this);
-    btnSave->setStyleSheet("background-color: #004400; border: 1px solid #00FF41;");
+    btnSave->setStyleSheet("background-color: #004400; border: 1px solid #00FF41; padding: 5px;");
     topLay->addWidget(combo); topLay->addWidget(btnSave);
-    mainLayout->addWidget(topBox);
+    main->addWidget(topBox);
 
-    // 2. SMART ACTIONS (3 ESTÁGIOS)
-    QGroupBox *ximBox = new QGroupBox("SMART ACTIONS (RECOIL DINÂMICO)", this);
-    ximBox->setStyleSheet("border: 1px solid #00FF41; padding: 10px;");
-    QVBoxLayout *xLay = new QVBoxLayout(ximBox);
-    
+    // 2. SMART ACTIONS (3 ESTÁGIOS) - Igual foto
     auto addStage = [&](QString n, int *v, int *h) {
-        xLay->addWidget(new QLabel(n, this));
         QHBoxLayout *hB = new QHBoxLayout();
-        
-        QLabel *lV = new QLabel(QString("V: %1").arg(*v));
+        QLabel *lV = new QLabel(QString("V: %1").arg(*v)); lV->setFixedWidth(60);
         QSlider *sV = new QSlider(Qt::Horizontal); sV->setRange(0, 100); sV->setValue(*v);
         connect(sV, &QSlider::valueChanged, [=](int val){ *v = val; lV->setText(QString("V: %1").arg(val)); });
         
-        QLabel *lH = new QLabel(QString("H: %1").arg(*h));
+        QLabel *lH = new QLabel(QString("H: %1").arg(*h)); lH->setFixedWidth(60);
         QSlider *sH = new QSlider(Qt::Horizontal); sH->setRange(-100, 100); sH->setValue(*h);
         connect(sH, &QSlider::valueChanged, [=](int val){ *h = val; lH->setText(QString("H: %1").arg(val)); });
 
-        hB->addWidget(lV); hB->addWidget(sV); hB->addWidget(lH); hB->addWidget(sH);
-        xLay->addLayout(hB);
+        hB->addWidget(new QLabel(n)); hB->addWidget(lV); hB->addWidget(sV); hB->addWidget(lH); hB->addWidget(sH);
+        main->addLayout(hB);
     };
 
-    addStage("ESTÁGIO 1 (KICK)", &v_stage1, &h_stage1);
-    addStage("ESTÁGIO 2 (TRANSIÇÃO)", &v_stage2, &h_stage2);
-    addStage("ESTÁGIO 3 (FINAL)", &v_stage3, &h_stage3);
-    mainLayout->addWidget(ximBox);
+    addStage("KICK (0-300ms)", &v_stage1, &h_stage1);
+    addStage("MEIO (300-800ms)", &v_stage2, &h_stage2);
+    addStage("FINAL (800ms+)", &v_stage3, &h_stage3);
 
     // 3. AJUSTES GLOBAIS
-    QGroupBox *globalBox = new QGroupBox("PRECISÃO", this);
-    globalBox->setStyleSheet("border: 1px solid #00FF41; padding: 10px;");
-    QVBoxLayout *gLay = new QVBoxLayout(globalBox);
-    
     auto addGlobal = [&](QString n, int min, int max, int *var) {
-        QLabel *lab = new QLabel(n + QString(": %1").arg(*var));
-        QSlider *sld = new QSlider(Qt::Horizontal); sld->setRange(min, max); sld->setValue(*var);
-        connect(sld, &QSlider::valueChanged, [=](int val){ *var = val; lab->setText(n + QString(": %1").arg(val)); });
-        gLay->addWidget(lab); gLay->addWidget(sld);
+        QHBoxLayout *row = new QHBoxLayout();
+        QLabel *l = new QLabel(n + QString(": %1").arg(*var)); l->setFixedWidth(200);
+        QSlider *s = new QSlider(Qt::Horizontal); s->setRange(min, max); s->setValue(*var);
+        connect(s, &QSlider::valueChanged, [=](int v){ *var = v; l->setText(n + QString(": %1").arg(v)); });
+        row->addWidget(l); row->addWidget(s);
+        main->addLayout(row);
     };
     
     addGlobal("Trava (Lock Power)", 0, 100, &lock_power_global);
-    addGlobal("Magnetismo (Aim Assist)", 0, 1500, &sticky_power_global);
-    addGlobal("Delay de Início", 0, 15, &start_delay_global);
-    mainLayout->addWidget(globalBox);
+    addGlobal("Magnetismo (Sticky)", 0, 1500, &sticky_power_global);
+    addGlobal("Delay (Ticks)", 0, 15, &start_delay_global);
 
-    // 4. CHECKBOX E SALVAR
+    // 4. CHECKBOX
     QCheckBox *cbS = new QCheckBox("STICKY AIM", this);
     connect(cbS, &QCheckBox::toggled, [](bool c){ sticky_aim_global = c; });
-    mainLayout->addWidget(cbS);
+    main->addWidget(cbS);
 
+    // SALVAR
     connect(btnSave, &QPushButton::clicked, [=](){
         QSettings s("GhostZen", "Profiles");
         s.setValue(combo->currentText() + "/v1", v_stage1);
+        s.setValue(combo->currentText() + "/v3", v_stage3);
     });
 
     setCentralWidget(central);
-    resize(560, 950);
+    resize(600, 900);
     show();
     session->Start();
 }
 
-// --- FUNÇÕES OBRIGATÓRIAS DE EVENTOS (ISSO RESOLVE O ERRO 'keyReleaseEvent') ---
-void StreamWindow::SessionQuit(ChiakiQuitReason r, const QString &s) { close(); }
-void StreamWindow::LoginPINRequested(bool i) {}
-void StreamWindow::OnNewWebConnection() {}
-void StreamWindow::ToggleFullscreen() { if(isFullScreen()) showNormal(); else showFullScreen(); }
-
+// --- FUNÇÕES DE INPUT (ESSENCIAIS PARA O ANALÓGICO MEXER) ---
 void StreamWindow::keyPressEvent(QKeyEvent *e) { if(session) session->HandleKeyboardEvent(e); }
-void StreamWindow::keyReleaseEvent(QKeyEvent *e) { if(session) session->HandleKeyboardEvent(e); } // AQUI ESTAVA FALTANDO!
+void StreamWindow::keyReleaseEvent(QKeyEvent *e) { if(session) session->HandleKeyboardEvent(e); }
 void StreamWindow::mousePressEvent(QMouseEvent *e) { if(session) session->HandleMouseEvent(e); }
 void StreamWindow::mouseReleaseEvent(QMouseEvent *e) { if(session) session->HandleMouseEvent(e); }
+void StreamWindow::mouseMoveEvent(QMouseEvent *e) { if(session) session->HandleMouseEvent(e); } // FALTAVA ISSO!
 void StreamWindow::mouseDoubleClickEvent(QMouseEvent *e) { ToggleFullscreen(); }
+
+// SISTEMA
+void StreamWindow::SessionQuit(ChiakiQuitReason, const QString&) { close(); }
+void StreamWindow::LoginPINRequested(bool) {}
+void StreamWindow::OnNewWebConnection() {}
+void StreamWindow::ToggleFullscreen() { isFullScreen() ? showNormal() : showFullScreen(); }
 void StreamWindow::closeEvent(QCloseEvent *e) { if(session) session->Stop(); }
 void StreamWindow::moveEvent(QMoveEvent *e) { QMainWindow::moveEvent(e); }
 void StreamWindow::resizeEvent(QResizeEvent *e) { QMainWindow::resizeEvent(e); }
