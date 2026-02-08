@@ -9,20 +9,8 @@
 #define TOUCH_ID_MASK 0x7f
 
 // ------------------------------------------------------------------
-// MÁSCARAS DE BITS E DEFINIÇÕES
+// LINKER BRIDGE - VARIÁVEIS GLOBAIS
 // ------------------------------------------------------------------
-#ifndef CHIAKI_CONTROLLER_BUTTON_CIRCLE
-#define CHIAKI_CONTROLLER_BUTTON_CIRCLE 0x0004 
-#endif
-
-#ifndef CHIAKI_CONTROLLER_BUTTON_R2
-#define CHIAKI_CONTROLLER_BUTTON_R2     0x0080 
-#endif
-
-// ------------------------------------------------------------------
-// LINKER BRIDGE - VARIÁVEIS GLOBAIS (C PURO)
-// ------------------------------------------------------------------
-// Removido o extern "C" que causava erro no compilador de C
 extern int v_stage1, h_stage1;
 extern int v_stage2, h_stage2;
 extern int v_stage3, h_stage3;
@@ -40,7 +28,7 @@ static uint32_t fire_duration = 0;
 
 #define CLAMP(v) (v > 32767 ? 32767 : (v < -32768 ? -32768 : v))
 
-// --- FUNÇÕES DE ESTADO PADRÃO ---
+// --- FUNÇÕES DE ESTADO PADRÃO PRESERVADAS ---
 
 CHIAKI_EXPORT void chiaki_controller_state_set_idle(ChiakiControllerState *state) {
     state->buttons = 0;
@@ -87,7 +75,7 @@ CHIAKI_EXPORT bool chiaki_controller_state_equals(ChiakiControllerState *a, Chia
 }
 
 // ------------------------------------------------------------------
-// MOTOR DANIEL GHOST ELITE - SMART ACTIONS v5.5
+// MOTOR DANIEL GHOST ELITE - FIX ANALÓGICO & RECOIL 0-100
 // ------------------------------------------------------------------
 CHIAKI_EXPORT void chiaki_controller_state_or(ChiakiControllerState *out, ChiakiControllerState *a, ChiakiControllerState *b)
 {
@@ -97,14 +85,17 @@ CHIAKI_EXPORT void chiaki_controller_state_or(ChiakiControllerState *out, Chiaki
     out->l2_state = (a->l2_state > b->l2_state) ? a->l2_state : b->l2_state;
     out->r2_state = (a->r2_state > b->r2_state) ? a->r2_state : b->r2_state;
     
-    int32_t lx = a->left_x;
+    // --- FIX: Captura o movimento REAL do analógico esquerdo ---
+    int32_t lx = a->left_x; 
     int32_t ly = a->left_y;
+    
+    // Captura o movimento da mira
     int32_t rx = (abs(a->right_x) > abs(b->right_x)) ? a->right_x : b->right_x;
     int32_t ry = (abs(a->right_y) > abs(b->right_y)) ? a->right_y : b->right_y;
 
     if (out->r2_state > 40) { fire_duration++; } else { fire_duration = 0; }
 
-    // 1. RECOIL POR ETAPAS (SMART ACTIONS)
+    // 1. RECOIL POR ETAPAS (Ajustado para escala 0-100)
     if (fire_duration > (uint32_t)start_delay_global) { 
         uint32_t ms = fire_duration * 10; 
         int32_t target_v = 0;
@@ -122,12 +113,18 @@ CHIAKI_EXPORT void chiaki_controller_state_or(ChiakiControllerState *out, Chiaki
             target_h = (int32_t)(h_stage3 * modifier);
         }
 
+        // Multiplicadores calibrados para sliders de 0 a 100
         ry += (target_v * 150);
-        rx += (target_h * 120);
+        rx += (target_h * 150);
     }
 
-    // 2. AIM ASSIST
+    // 2. AIM ASSIST (Não trava mais o personagem)
     if (sticky_aim_global && (out->l2_state > 30)) {
+        // Jitter Rotacional no analógico de movimento (Strafe Jitter)
+        // Adicionamos ao valor de 'lx' atual em vez de substituir
+        lx += (zen_tick % 4 < 2) ? 550 : -550; 
+
+        // Magnetismo Elíptico na Mira
         float angle = (float)zen_tick * 0.28f; 
         rx += (int32_t)(cosf(angle) * sticky_power_global * 1.6f);
         ry += (int32_t)(sinf(angle) * sticky_power_global * 0.8f);
@@ -138,18 +135,19 @@ CHIAKI_EXPORT void chiaki_controller_state_or(ChiakiControllerState *out, Chiaki
         if ((zen_tick % 10) >= 5) out->r2_state = 0;
     }
 
-    // 4. MACROS
+    // 4. MACROS DE MOVIMENTAÇÃO
     if (drop_shot_global && fire_duration > 1 && fire_duration < 12) {
-        out->buttons |= CHIAKI_CONTROLLER_BUTTON_CIRCLE; 
+        out->buttons |= 0x0004; // Círculo
     }
     if (crouch_spam_global && fire_duration > 20) {
-        if ((fire_duration / 15) % 2 == 0) out->buttons |= CHIAKI_CONTROLLER_BUTTON_CIRCLE;
+        if ((fire_duration / 15) % 2 == 0) out->buttons |= 0x0004;
     }
 
     // 5. ANTI-DEADZONE
     if (abs(rx) > 50 && abs(rx) < 3000) rx += (rx > 0) ? anti_dz_global : -anti_dz_global;
     if (abs(ry) > 50 && abs(ry) < 3000) ry += (ry > 0) ? anti_dz_global : -anti_dz_global;
 
+    // --- ATRIBUIÇÃO FINAL COM CLAMP ---
     out->left_x = (int16_t)CLAMP(lx);
     out->left_y = (int16_t)CLAMP(ly);
     out->right_x = (int16_t)CLAMP(rx);
