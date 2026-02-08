@@ -10,8 +10,10 @@
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QSettings>
+#include <QKeyEvent>
+#include <QMouseEvent>
 
-// --- LINKER BRIDGE: CONEXÃO COM O CONTROLLER.C ---
+// --- LINKER BRIDGE: CONEXÃO COM O MOTOR DO CONTROLE ---
 extern "C" {
     int recoil_v_global = 16, recoil_h_global = 0;
     int lock_power_global = 100, start_delay_global = 2, sticky_power_global = 750, anti_dz_global = 0;
@@ -83,7 +85,7 @@ void StreamWindow::Init() {
     cbS->setChecked(sticky_aim_global);
     connect(cbS, &QCheckBox::toggled, [](bool c){ sticky_aim_global = c; });
     mLayout->addWidget(cbS);
-    mainLayout->addWidget(macroBox);
+    mainLayout->addLayout(mLayout);
 
     // Lógica do Botão Salvar
     connect(btnSave, &QPushButton::clicked, [=](){
@@ -98,8 +100,18 @@ void StreamWindow::Init() {
     session->Start();
 }
 
-// Funções de Linker obrigatórias para não dar erro de "undefined reference"
-void StreamWindow::SessionQuit(ChiakiQuitReason, const QString&) { close(); }
-void StreamWindow::LoginPINRequested(bool) {}
+// --- FUNÇÕES OBRIGATÓRIAS PARA O LINKER E PARA O PERSONAGEM ANDAR ---
+void StreamWindow::SessionQuit(ChiakiQuitReason r, const QString &s) { close(); }
+void StreamWindow::LoginPINRequested(bool i) {}
 void StreamWindow::OnNewWebConnection() {}
-void StreamWindow::ToggleFullscreen() { isFullScreen() ? showNormal() : showFullScreen(); }
+void StreamWindow::ToggleFullscreen() { if(isFullScreen()) showNormal(); else showFullScreen(); }
+
+void StreamWindow::keyPressEvent(QKeyEvent *e) { if(session) session->HandleKeyboardEvent(e); }
+void StreamWindow::keyReleaseEvent(QKeyEvent *e) { if(session) session->HandleKeyboardEvent(e); }
+void StreamWindow::mousePressEvent(QMouseEvent *e) { if(session) session->HandleMouseEvent(e); }
+void StreamWindow::mouseReleaseEvent(QMouseEvent *e) { if(session) session->HandleMouseEvent(e); }
+void StreamWindow::mouseDoubleClickEvent(QMouseEvent *e) { ToggleFullscreen(); }
+void StreamWindow::closeEvent(QCloseEvent *e) { if(session) session->Stop(); }
+void StreamWindow::moveEvent(QMoveEvent *e) { QMainWindow::moveEvent(e); }
+void StreamWindow::resizeEvent(QResizeEvent *e) { QMainWindow::resizeEvent(e); }
+void StreamWindow::changeEvent(QEvent *e) { QMainWindow::changeEvent(e); }
