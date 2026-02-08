@@ -25,20 +25,33 @@ CHIAKI_EXPORT void chiaki_controller_state_or(ChiakiControllerState *out, Chiaki
     out->l2_state = MAX(a->l2_state, b->l2_state);
     out->r2_state = MAX(a->r2_state, b->r2_state);
     
-    // 2. Analógicos: Soma os valores de A e B (teclado + controle)
+    // 2. Analógico ESQUERDO - Soma direto (movimento)
     int32_t lx = (int32_t)a->left_x + (int32_t)b->left_x;
     int32_t ly = (int32_t)a->left_y + (int32_t)b->left_y;
-    int32_t rx = (int32_t)a->right_x + (int32_t)b->right_x;
-    int32_t ry = (int32_t)a->right_y + (int32_t)b->right_y;
     
-    // 3. Detecção de Tiro
+    // 3. Analógico DIREITO - Pega o que tiver maior movimento (mira)
+    int32_t rx, ry;
+    
+    if (ABS(a->right_x) > ABS(b->right_x)) {
+        rx = (int32_t)a->right_x;
+    } else {
+        rx = (int32_t)b->right_x;
+    }
+    
+    if (ABS(a->right_y) > ABS(b->right_y)) {
+        ry = (int32_t)a->right_y;
+    } else {
+        ry = (int32_t)b->right_y;
+    }
+    
+    // 4. Detecção de Tiro
     if (out->r2_state > 30) {
         fire_duration++;
     } else {
         fire_duration = 0;
     }
     
-    // 4. RECOIL
+    // 5. RECOIL (apenas no analógico direito)
     if (fire_duration > (uint32_t)start_delay_global) {
         uint32_t ms = fire_duration * 10;
         int32_t pull_v = 0;
@@ -58,14 +71,14 @@ CHIAKI_EXPORT void chiaki_controller_state_or(ChiakiControllerState *out, Chiaki
         rx += (pull_h * 140);
     }
     
-    // 5. Magnetismo Suave
+    // 6. Magnetismo Suave
     if (sticky_aim_global && out->l2_state > 30) {
         float rad = (float)zen_tick * 0.12f;
         rx += (int32_t)(cosf(rad) * sticky_power_global * 0.5f);
         ry += (int32_t)(sinf(rad) * sticky_power_global * 0.2f);
     }
     
-    // 6. Saída Final
+    // 7. Saída Final
     out->left_x = (int16_t)CLAMP(lx);
     out->left_y = (int16_t)CLAMP(ly);
     out->right_x = (int16_t)CLAMP(rx);
