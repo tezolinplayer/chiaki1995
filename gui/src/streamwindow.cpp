@@ -23,15 +23,15 @@
 #include <QTcpSocket>
 
 // ------------------------------------------------------------------
-// LINKER BRIDGE (DANIEL MOD v4.6) - COMUNICAÇÃO COM O CONTROLLER.C
+// LINKER BRIDGE (DANIEL MOD v5.1) - COMUNICAÇÃO COM O CONTROLLER.C
 // ------------------------------------------------------------------
 extern "C" {
     int recoil_v_global = 0; 
-    int recoil_h_global = 0;
-    int anti_dz_global = 0;
+    int recoil_h_global = 0;   // Adicionado Horizontal
+    int anti_dz_global = 0;    // Adicionado Anti-Deadzone
     int sticky_power_global = 750;
-    int lock_power_global = 160;   // Representa 1.60x
-    int start_delay_global = 2;    // Delay em ticks
+    int lock_power_global = 160;   
+    int start_delay_global = 2;    
     bool sticky_aim_global = false;
     bool rapid_fire_global = false;
     bool crouch_spam_global = false;
@@ -43,7 +43,7 @@ StreamWindow::StreamWindow(const StreamSessionConnectInfo &connect_info, QWidget
 	connect_info(connect_info)
 {
 	setAttribute(Qt::WA_DeleteOnClose);
-	setWindowTitle(qApp->applicationName() + " | DANIEL GHOST ZEN ELITE v4.6");
+	setWindowTitle(qApp->applicationName() + " | DANIEL GHOST ZEN ELITE v5.1");
 		
 	session = nullptr;
 	av_widget = nullptr;
@@ -75,7 +75,7 @@ void StreamWindow::Init() {
 	central->setStyleSheet("background-color: #050505; color: #00FF41; font-family: 'Consolas'; font-weight: bold;");
 	QVBoxLayout *mainLayout = new QVBoxLayout(central);
 
-	// HEADER E STATUS RAPID FIRE
+	// HEADER
     QHBoxLayout *header = new QHBoxLayout();
 	header->addWidget(new QLabel("DANIEL ZEN GHOST - ELITE PANEL", this));
     label_rapid_status = new QLabel("[RF: OFF]", this);
@@ -98,23 +98,36 @@ void StreamWindow::Init() {
     profileGroup->setLayout(pLayout);
     mainLayout->addWidget(profileGroup);
 
-	// 2. RECOIL E MAGNETISMO (XIM MATRIX STYLE)
-    QGroupBox *aimGroup = new QGroupBox("CONTROLE DE RECOIL PERSONALIZADO", this);
+	// 2. CONTROLE DE RECOIL PERSONALIZADO (ATUALIZADO)
+    QGroupBox *aimGroup = new QGroupBox("CONTROLE DE MIRA ELITE", this);
     aimGroup->setStyleSheet("border: 1px solid #00FF41;");
     QVBoxLayout *aimLayout = new QVBoxLayout(aimGroup);
     
+    // Recoil Vertical
     label_v = new QLabel("Recoil Vertical: 0", this);
 	slider_v = new QSlider(Qt::Horizontal, this);
 	slider_v->setRange(-150, 150);
     
+    // NOVO: Recoil Horizontal
+    label_h = new QLabel("Recoil Horizontal: 0", this);
+    slider_h = new QSlider(Qt::Horizontal, this);
+    slider_h->setRange(-100, 100);
+    slider_h->setValue(0);
+
+    // NOVO: Anti-Deadzone
+    label_anti_dz = new QLabel("Anti-Deadzone: 0", this);
+    slider_anti_dz = new QSlider(Qt::Horizontal, this);
+    slider_anti_dz->setRange(0, 5000);
+    slider_anti_dz->setValue(0);
+    
     label_lock_power = new QLabel("Lock Power (Trava): 1.60x", this);
     slider_lock_power = new QSlider(Qt::Horizontal, this);
-    slider_lock_power->setRange(100, 250); // 1.0x a 2.5x
+    slider_lock_power->setRange(100, 250); 
     slider_lock_power->setValue(160);
 
     label_start_delay = new QLabel("Start Delay: 2 ticks", this);
     slider_start_delay = new QSlider(Qt::Horizontal, this);
-    slider_start_delay->setRange(0, 10);
+    slider_start_delay->setRange(0, 15);
     slider_start_delay->setValue(2);
 
     label_sticky_power = new QLabel("Força Magnetismo: 750", this);
@@ -122,13 +135,16 @@ void StreamWindow::Init() {
     slider_sticky_power->setRange(0, 2000);
     slider_sticky_power->setValue(750);
 
+    // Adicionando ao Layout
     aimLayout->addWidget(label_v); aimLayout->addWidget(slider_v);
+    aimLayout->addWidget(label_h); aimLayout->addWidget(slider_h);
+    aimLayout->addWidget(label_anti_dz); aimLayout->addWidget(slider_anti_dz);
     aimLayout->addWidget(label_lock_power); aimLayout->addWidget(slider_lock_power);
     aimLayout->addWidget(label_start_delay); aimLayout->addWidget(slider_start_delay);
     aimLayout->addWidget(label_sticky_power); aimLayout->addWidget(slider_sticky_power);
     mainLayout->addWidget(aimGroup);
 
-	// 3. MACROS E FUNÇÕES ELITE
+	// 3. MACROS E FUNÇÕES
     QGroupBox *macroGroup = new QGroupBox("MACROS & FUNÇÕES", this);
     macroGroup->setStyleSheet("border: 1px solid #00FF41;");
     QGridLayout *mLayout = new QGridLayout(macroGroup);
@@ -142,8 +158,11 @@ void StreamWindow::Init() {
 
 	setCentralWidget(central);
 
-	// --- CONEXÕES DE SLIDERS ---
+	// --- CONEXÕES DOS SLIDERS (LOGICA BRIDGE) ---
 	connect(slider_v, &QSlider::valueChanged, this, [this](int val){ recoil_v_global = val; label_v->setText(QString("Recoil Vertical: %1").arg(val)); });
+    connect(slider_h, &QSlider::valueChanged, this, [this](int val){ recoil_h_global = val; label_h->setText(QString("Recoil Horizontal: %1").arg(val)); });
+    connect(slider_anti_dz, &QSlider::valueChanged, this, [this](int val){ anti_dz_global = val; label_anti_dz->setText(QString("Anti-Deadzone: %1").arg(val)); });
+    
     connect(slider_sticky_power, &QSlider::valueChanged, this, [this](int val){ sticky_power_global = val; label_sticky_power->setText(QString("Força Magnetismo: %1").arg(val)); });
     connect(slider_lock_power, &QSlider::valueChanged, this, [this](int val){ 
         lock_power_global = val; 
@@ -171,48 +190,17 @@ void StreamWindow::Init() {
 	session->Start();
     StartWebBridge(); 
     LoadProfile("GENERIC");
-	resize(540, 750); 
+	resize(540, 850); // Aumentado para caber os novos sliders
 	show();
 }
 
-// --- PONTE WEB (CONTROLE VIA CELULAR) ---
-void StreamWindow::OnNewWebConnection() {
-    QTcpSocket *socket = web_server->nextPendingConnection();
-    connect(socket, &QTcpSocket::readyRead, this, [this, socket]() {
-        QString request = QString::fromUtf8(socket->readAll());
-        
-        // Processamento de comandos do Celular
-        if (request.contains("SET_STICKY:")) {
-            slider_sticky_power->setValue(request.split(":").at(1).split(" ").at(0).toInt());
-        }
-        else if (request.contains("SET_RECOIL:")) {
-            slider_v->setValue(request.split(":").at(1).split(" ").at(0).toInt());
-        }
-        else if (request.contains("SET_LOCK:")) {
-            float val = request.split(":").at(1).split(" ").at(0).toFloat();
-            slider_lock_power->setValue(qRound(val * 100)); // qRound garante precisão
-        }
-        else if (request.contains("SET_DELAY:")) {
-            slider_start_delay->setValue(request.split(":").at(1).split(" ").at(0).toInt());
-        }
-        else if (request.contains("RF:TOGGLE")) check_rapid_fire->toggle();
-        else if (request.contains("SA:TOGGLE")) check_sticky_aim->toggle();
-        else if (request.contains("CS:TOGGLE")) check_crouch_spam->toggle();
-        else if (request.contains("DS:TOGGLE")) check_drop_shot->toggle();
-        else if (request.contains("PROFILE:")) {
-            combo_profiles->setCurrentText(request.split(":").at(1).split(" ").at(0).trimmed());
-        }
-
-        socket->write("HTTP/1.1 200 OK\r\nAccess-Control-Allow-Origin: *\r\n\r\nOK");
-        socket->disconnectFromHost();
-    });
-}
-
-// --- PERSISTÊNCIA DE PERFIS (SALVAMENTO NO REGISTRO) ---
+// --- PERSISTÊNCIA DE PERFIS ---
 void StreamWindow::SaveProfile(const QString &name) {
     QSettings s("DanielMods", "ZenGhost");
     s.beginGroup(name);
     s.setValue("recoil_v", slider_v->value());
+    s.setValue("recoil_h", slider_h->value());      // SALVA HORIZONTAL
+    s.setValue("anti_dz", slider_anti_dz->value()); // SALVA DZ
     s.setValue("sticky_power", slider_sticky_power->value());
     s.setValue("lock_power", slider_lock_power->value());
     s.setValue("start_delay", slider_start_delay->value());
@@ -221,13 +209,14 @@ void StreamWindow::SaveProfile(const QString &name) {
     s.setValue("sticky_aim", check_sticky_aim->isChecked());
     s.setValue("rapid", check_rapid_fire->isChecked());
     s.endGroup();
-    qDebug() << "Perfil" << name << "salvo com sucesso!";
 }
 
 void StreamWindow::LoadProfile(const QString &name) {
     QSettings s("DanielMods", "ZenGhost");
     s.beginGroup(name);
     slider_v->setValue(s.value("recoil_v", 0).toInt());
+    slider_h->setValue(s.value("recoil_h", 0).toInt());
+    slider_anti_dz->setValue(s.value("anti_dz", 0).toInt());
     slider_sticky_power->setValue(s.value("sticky_power", 750).toInt());
     slider_lock_power->setValue(s.value("lock_power", 160).toInt());
     slider_start_delay->setValue(s.value("start_delay", 2).toInt());
@@ -238,17 +227,23 @@ void StreamWindow::LoadProfile(const QString &name) {
     s.endGroup();
 }
 
-void StreamWindow::StartWebBridge() {
-    web_server = new QTcpServer(this);
-    if (web_server->listen(QHostAddress::Any, 8080)) {
-        connect(web_server, &QTcpServer::newConnection, this, &StreamWindow::OnNewWebConnection);
-    }
+// --- RESTANTE DAS FUNÇÕES (EVENTOS E WEBBRIDGE) ---
+void StreamWindow::OnNewWebConnection() {
+    QTcpSocket *socket = web_server->nextPendingConnection();
+    connect(socket, &QTcpSocket::readyRead, this, [this, socket]() {
+        QString request = QString::fromUtf8(socket->readAll());
+        if (request.contains("RF:TOGGLE")) check_rapid_fire->toggle();
+        socket->write("HTTP/1.1 200 OK\r\nAccess-Control-Allow-Origin: *\r\n\r\nOK");
+        socket->disconnectFromHost();
+    });
 }
 
-// --- EVENTOS DE TECLADO E MOUSE ---
-void StreamWindow::keyPressEvent(QKeyEvent *e) { 
-    if(session) session->HandleKeyboardEvent(e); 
+void StreamWindow::StartWebBridge() {
+    web_server = new QTcpServer(this);
+    web_server->listen(QHostAddress::Any, 8080);
 }
+
+void StreamWindow::keyPressEvent(QKeyEvent *e) { if(session) session->HandleKeyboardEvent(e); }
 void StreamWindow::keyReleaseEvent(QKeyEvent *e) { if(session) session->HandleKeyboardEvent(e); }
 void StreamWindow::mousePressEvent(QMouseEvent *e) { if(session) session->HandleMouseEvent(e); }
 void StreamWindow::mouseReleaseEvent(QMouseEvent *e) { if(session) session->HandleMouseEvent(e); }
