@@ -9,109 +9,85 @@
 #include <QGroupBox>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
-#include <QSettings>
 #include <QKeyEvent>
 #include <QMouseEvent>
+#include <QSettings>
 
-// --- LINKER BRIDGE: CONEXÃO COM O MOTOR DO CONTROLE ---
 extern "C" {
-    int recoil_v_global = 16, recoil_h_global = 0;
-    int lock_power_global = 100, start_delay_global = 2, sticky_power_global = 750, anti_dz_global = 0;
-    bool sticky_aim_global = false, rapid_fire_global = false;
+    int v_stage1 = 0, h_stage1 = 0, v_stage2 = 0, h_stage2 = 0, v_stage3 = 0, h_stage3 = 0;
+    int anti_dz_global = 0, sticky_power_global = 750, lock_power_global = 100, start_delay_global = 2;
+    bool sticky_aim_global = false, rapid_fire_global = false, crouch_spam_global = false, drop_shot_global = false;
 }
 
-StreamWindow::StreamWindow(const StreamSessionConnectInfo &connect_info, QWidget *parent)
-    : QMainWindow(parent), connect_info(connect_info) 
-{
+StreamWindow::StreamWindow(const StreamSessionConnectInfo &info, QWidget *parent) : QMainWindow(parent) {
     setAttribute(Qt::WA_DeleteOnClose);
-    setWindowTitle("DANIEL GHOST ZEN ELITE | v5.5");
-    session = new StreamSession(connect_info, this);
-    
+    session = new StreamSession(info, this);
     connect(session, &StreamSession::SessionQuit, this, &StreamWindow::SessionQuit);
-    
     Init();
-}
-
-StreamWindow::~StreamWindow() {
-    if (session) session->Stop();
 }
 
 void StreamWindow::Init() {
     QWidget *central = new QWidget(this);
     central->setStyleSheet("background-color: #050505; color: #00FF41; font-family: 'Consolas'; font-weight: bold;");
-    QVBoxLayout *mainLayout = new QVBoxLayout(central);
+    QVBoxLayout *main = new QVBoxLayout(central);
 
-    // 1. SELEÇÃO DE ARMA E SALVAR (Igual à v4.6)
+    // 1. SELEÇÃO DE ARMA
     QGroupBox *topBox = new QGroupBox("SELEÇÃO DE ARMA", this);
-    topBox->setStyleSheet("border: 1px solid #00FF41; padding: 5px;");
-    QHBoxLayout *topLayout = new QHBoxLayout(topBox);
+    QHBoxLayout *topLay = new QHBoxLayout(topBox);
     QComboBox *combo = new QComboBox(this);
-    combo->addItems({"M416", "BERYL", "SCAR-L", "AKM", "GENERIC"});
-    combo->setStyleSheet("background-color: #111; color: #00FF41; border: 1px solid #00FF41;");
-    
-    QPushButton *btnSave = new QPushButton("SALVAR PERFIL", this);
-    btnSave->setStyleSheet("background-color: #004400; border: 1px solid #00FF41; padding: 5px;");
-    
-    topLayout->addWidget(combo); topLayout->addWidget(btnSave);
-    mainLayout->addWidget(topBox);
+    combo->addItems({"M416", "BERYL", "SCAR-L", "GENERIC"});
+    QPushButton *btnSave = new QPushButton("SALVAR", this);
+    btnSave->setStyleSheet("background-color: #004400; border: 1px solid #00FF41;");
+    topLay->addWidget(combo); topLay->addWidget(btnSave);
+    main->addWidget(topBox);
 
-    // 2. CONTROLES COM NÚMEROS (0-100) - Igual à image_de8b83.png
-    QGroupBox *recoilGroup = new QGroupBox("CONTROLE DE RECOIL PERSONALIZADO", this);
-    recoilGroup->setStyleSheet("border: 1px solid #00FF41; padding: 10px;");
-    QVBoxLayout *rLayout = new QVBoxLayout(recoilGroup);
-
-    auto addRow = [&](QString name, int min, int max, int *var) {
-        QLabel *lab = new QLabel(name + QString(": %1").arg(*var), this);
-        QSlider *sld = new QSlider(Qt::Horizontal, this);
-        sld->setRange(min, max); 
-        sld->setValue(*var);
-        connect(sld, &QSlider::valueChanged, [=](int val){ 
-            *var = val; 
-            lab->setText(name + QString(": %1").arg(val)); 
-        });
-        rLayout->addWidget(lab); rLayout->addWidget(sld);
+    // 2. SMART ACTIONS - 3 ESTÁGIOS
+    QGroupBox *ximBox = new QGroupBox("SMART ACTIONS - RECOIL DINÂMICO", this);
+    QVBoxLayout *xLay = new QVBoxLayout(ximBox);
+    auto addStage = [&](QString n, int *v, int *h) {
+        xLay->addWidget(new QLabel(n, this));
+        QHBoxLayout *hB = new QHBoxLayout();
+        auto slV = new QSlider(Qt::Horizontal, this); slV->setRange(0, 100); slV->setValue(*v);
+        auto slH = new QSlider(Qt::Horizontal, this); slH->setRange(-100, 100); slH->setValue(*h);
+        connect(slV, &QSlider::valueChanged, [=](int val){ *v = val; });
+        connect(slH, &QSlider::valueChanged, [=](int val){ *h = val; });
+        hB->addWidget(new QLabel("V:")); hB->addWidget(slV); hB->addWidget(new QLabel("H:")); hB->addWidget(slH);
+        xLay->addLayout(hB);
     };
+    addStage("KICK (0-300ms)", &v_stage1, &h_stage1);
+    addStage("ESTABILIZAÇÃO (300ms+)", &v_stage3, &h_stage3);
+    main->addWidget(ximBox);
 
-    addRow("Recoil Vertical (Andar)", 0, 100, &recoil_v_global);
+    // 3. AJUSTES GLOBAIS COM NÚMEROS
+    auto addRow = [&](QString n, int min, int max, int *var) {
+        QLabel *l = new QLabel(n + QString(": %1").arg(*var), this);
+        QSlider *s = new QSlider(Qt::Horizontal, this); s->setRange(min, max); s->setValue(*var);
+        connect(s, &QSlider::valueChanged, [=](int v){ *var = v; l->setText(n + QString(": %1").arg(v)); });
+        main->addWidget(l); main->addWidget(s);
+    };
     addRow("Lock Power (Trava)", 0, 100, &lock_power_global);
-    addRow("Start Delay (Ticks)", 0, 15, &start_delay_global);
+    addRow("Start Delay", 0, 15, &start_delay_global);
     addRow("Magnetismo (Sticky)", 0, 1500, &sticky_power_global);
-    mainLayout->addWidget(recoilGroup);
 
-    // 3. MACROS (STICKY AIM)
-    QGroupBox *macroBox = new QGroupBox("MACROS", this);
-    QHBoxLayout *mLayout = new QHBoxLayout(macroBox);
+    // 4. CHECKBOXES
+    QHBoxLayout *checkLay = new QHBoxLayout();
     QCheckBox *cbS = new QCheckBox("STICKY AIM", this);
-    cbS->setChecked(sticky_aim_global);
     connect(cbS, &QCheckBox::toggled, [](bool c){ sticky_aim_global = c; });
-    mLayout->addWidget(cbS);
-    mainLayout->addLayout(mLayout);
-
-    // Lógica do Botão Salvar
-    connect(btnSave, &QPushButton::clicked, [=](){
-        QSettings s("GhostZen", "Profiles");
-        s.setValue(combo->currentText() + "/v", recoil_v_global);
-        s.setValue(combo->currentText() + "/lock", lock_power_global);
-    });
+    checkLay->addWidget(cbS);
+    main->addLayout(checkLay);
 
     setCentralWidget(central);
+    setWindowTitle("DANIEL GHOST ZEN ELITE | v5.5");
     resize(560, 950);
     show();
     session->Start();
 }
 
-// --- FUNÇÕES OBRIGATÓRIAS PARA O LINKER E PARA O PERSONAGEM ANDAR ---
-void StreamWindow::SessionQuit(ChiakiQuitReason r, const QString &s) { close(); }
-void StreamWindow::LoginPINRequested(bool i) {}
+// Funções obrigatórias para o Linker e Personagem Andar
+void StreamWindow::SessionQuit(ChiakiQuitReason, const QString&) { close(); }
+void StreamWindow::LoginPINRequested(bool) {}
 void StreamWindow::OnNewWebConnection() {}
-void StreamWindow::ToggleFullscreen() { if(isFullScreen()) showNormal(); else showFullScreen(); }
-
+void StreamWindow::ToggleFullscreen() { isFullScreen() ? showNormal() : showFullScreen(); }
 void StreamWindow::keyPressEvent(QKeyEvent *e) { if(session) session->HandleKeyboardEvent(e); }
-void StreamWindow::keyReleaseEvent(QKeyEvent *e) { if(session) session->HandleKeyboardEvent(e); }
 void StreamWindow::mousePressEvent(QMouseEvent *e) { if(session) session->HandleMouseEvent(e); }
-void StreamWindow::mouseReleaseEvent(QMouseEvent *e) { if(session) session->HandleMouseEvent(e); }
-void StreamWindow::mouseDoubleClickEvent(QMouseEvent *e) { ToggleFullscreen(); }
-void StreamWindow::closeEvent(QCloseEvent *e) { if(session) session->Stop(); }
-void StreamWindow::moveEvent(QMoveEvent *e) { QMainWindow::moveEvent(e); }
-void StreamWindow::resizeEvent(QResizeEvent *e) { QMainWindow::resizeEvent(e); }
-void StreamWindow::changeEvent(QEvent *e) { QMainWindow::changeEvent(e); }
+StreamWindow::~StreamWindow() { if (session) session->Stop(); }
