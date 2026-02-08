@@ -16,15 +16,11 @@ extern bool sticky_aim_global, rapid_fire_global, crouch_spam_global, drop_shot_
 static uint32_t zen_tick = 0;
 static uint32_t fire_duration = 0; 
 
+// Funções de estado obrigatórias para o Chiaki
 CHIAKI_EXPORT void chiaki_controller_state_set_idle(ChiakiControllerState *state) {
     state->buttons = 0;
     state->l2_state = state->r2_state = 0;
     state->left_x = state->left_y = state->right_x = state->right_y = 0;
-    state->touch_id_next = 0;
-    for(size_t i = 0; i < CHIAKI_CONTROLLER_TOUCHES_MAX; i++) {
-        state->touches[i].id = -1;
-        state->touches[i].x = state->touches[i].y = 0;
-    }
 }
 
 CHIAKI_EXPORT bool chiaki_controller_state_equals(ChiakiControllerState *a, ChiakiControllerState *b) {
@@ -32,7 +28,7 @@ CHIAKI_EXPORT bool chiaki_controller_state_equals(ChiakiControllerState *a, Chia
 }
 
 // ------------------------------------------------------------------
-// MOTOR DANIEL GHOST ELITE - FIX RECOIL SEGURADO (R2)
+// MOTOR DANIEL GHOST ELITE - FIX RECOIL CONTÍNUO (SEGURADO)
 // ------------------------------------------------------------------
 CHIAKI_EXPORT void chiaki_controller_state_or(ChiakiControllerState *out, ChiakiControllerState *a, ChiakiControllerState *b)
 {
@@ -42,59 +38,56 @@ CHIAKI_EXPORT void chiaki_controller_state_or(ChiakiControllerState *out, Chiaki
     out->l2_state = (a->l2_state > b->l2_state) ? a->l2_state : b->l2_state;
     out->r2_state = (a->r2_state > b->r2_state) ? a->r2_state : b->r2_state;
     
-    // Analógico Esquerdo (Movimento livre para andar)
+    // Mantém analógico esquerdo livre para andar
     int32_t lx = (int32_t)MAX_ABS(a->left_x, b->left_x);
     int32_t ly = (int32_t)MAX_ABS(a->left_y, b->left_y);
     
-    // Analógico Direito (Mira)
     int32_t rx = (int32_t)MAX_ABS(a->right_x, b->right_x);
     int32_t ry = (int32_t)MAX_ABS(a->right_y, b->right_y);
 
-    // --- DETECÇÃO DE DISPARO SEGURADO ---
-    if (out->r2_state > 35) { // Sensibilidade aumentada para o gatilho
+    // --- LÓGICA DE DISPARO SEGURADO ---
+    // Aumentei o tempo de persistência para o No-Recoil não "piscar"
+    if (out->r2_state > 30) { 
         fire_duration++; 
     } else { 
-        fire_duration = 0; // Soltou o R2, para de puxar a mira NA HORA
+        fire_duration = 0; // Reset instantâneo ao soltar o dedo
     }
 
-    // --- SISTEMA DE ETAPAS XIM MATRIX ---
+    // Só entra no No-Recoil se estiver segurando o gatilho além do delay
     if (fire_duration > (uint32_t)start_delay_global) { 
         uint32_t ms = fire_duration * 10; 
-        int32_t force_v = 0;
-        int32_t force_h = 0;
+        int32_t active_v = 0;
+        int32_t active_h = 0;
 
         if (ms <= 350) { 
-            force_v = v_stage1; force_h = h_stage1; 
+            active_v = v_stage1; active_h = h_stage1; 
         } 
-        else if (ms <= 900) { 
-            force_v = v_stage2; force_h = h_stage2; 
+        else if (ms <= 950) { 
+            active_v = v_stage2; active_h = h_stage2; 
         } 
         else {
-            float mod = (float)lock_power_global / 100.0f;
-            force_v = (int32_t)(v_stage3 * mod);
-            force_h = (int32_t)(h_stage3 * mod);
+            float lock_mod = (float)lock_power_global / 100.0f;
+            active_v = (int32_t)(v_stage3 * lock_mod);
+            active_h = (int32_t)(h_stage3 * lock_mod);
         }
 
-        // Aplicação da força: ry positivo EMPURRA para baixo
-        ry += (force_v * 175); // Multiplicador aumentado para garantir a descida
-        rx += (force_h * 175);
+        // Aplica a força de descida contínua enquanto fire_duration > 0
+        // Multiplicador 180 garante que os sliders 0-100 tenham força total
+        ry += (active_v * 180); 
+        rx += (active_h * 180);
     }
 
-    // Sticky Aim (Magnetismo) sem travar o personagem
+    // Sticky Aim sem travar o movimento do personagem
     if (sticky_aim_global && (out->l2_state > 30)) {
-        lx += (zen_tick % 4 < 2) ? 700 : -700; // Micro-strafe para AA
-        float angle = (float)zen_tick * 0.30f; 
-        rx += (int32_t)(cosf(angle) * sticky_power_global * 1.5f);
-        ry += (int32_t)(sinf(angle) * sticky_power_global * 0.7f);
+        lx += (zen_tick % 4 < 2) ? 750 : -750;
+        float angle = (float)zen_tick * 0.32f; 
+        rx += (int32_t)(cosf(angle) * sticky_power_global * 1.6f);
+        ry += (int32_t)(sinf(angle) * sticky_power_global * 0.8f);
     }
 
-    // Finalização com travas de segurança (Clamp)
+    // Finalização com travas de limite (Clamp)
     out->left_x = (int16_t)CLAMP(lx);
     out->left_y = (int16_t)CLAMP(ly);
     out->right_x = (int16_t)CLAMP(rx);
     out->right_y = (int16_t)CLAMP(ry);
-
-    for(size_t i = 0; i < CHIAKI_CONTROLLER_TOUCHES_MAX; i++) {
-        out->touches[i] = (a->touches[i].id >= 0) ? a->touches[i] : b->touches[i];
-    }
 }
