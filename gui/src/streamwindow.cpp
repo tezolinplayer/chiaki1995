@@ -9,9 +9,12 @@
 #include <QGroupBox>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
+#include <QKeyEvent>
+#include <QMouseEvent>
 #include <QSettings>
+#include <QDebug>
 
-// --- LINKER BRIDGE: CONEXÃO COM AS VARIÁVEIS DO CONTROLLER.C ---
+// --- LINKER BRIDGE: CONEXÃO COM O CONTROLLER.C ---
 extern "C" {
     int v_stage1 = 0, h_stage1 = 0;
     int v_stage2 = 0, h_stage2 = 0;
@@ -26,12 +29,30 @@ extern "C" {
     bool drop_shot_global = false;
 }
 
+StreamWindow::StreamWindow(const StreamSessionConnectInfo &connect_info, QWidget *parent)
+    : QMainWindow(parent), connect_info(connect_info) 
+{
+    setAttribute(Qt::WA_DeleteOnClose);
+    setWindowTitle("DANIEL GHOST ZEN ELITE | v5.5 SMART ACTIONS");
+    session = new StreamSession(connect_info, this);
+    
+    // Conexões vitais para evitar erros de Linker
+    connect(session, &StreamSession::SessionQuit, this, &StreamWindow::SessionQuit);
+    connect(session, &StreamSession::LoginPINRequested, this, &StreamWindow::LoginPINRequested);
+    
+    Init();
+}
+
+StreamWindow::~StreamWindow() {
+    if (session) session->Stop();
+}
+
 void StreamWindow::Init() {
     QWidget *central = new QWidget(this);
     central->setStyleSheet("background-color: #050505; color: #00FF41; font-family: 'Consolas'; font-weight: bold;");
     QVBoxLayout *mainLayout = new QVBoxLayout(central);
 
-    // --- 1. SELEÇÃO DE ARMA (PERFIS) ---
+    // --- 1. SELEÇÃO DE ARMA (RESTAURADO) ---
     QGroupBox *profileGroup = new QGroupBox("SELEÇÃO DE ARMA", this);
     profileGroup->setStyleSheet("border: 1px solid #00FF41; padding: 5px;");
     QHBoxLayout *pLayout = new QHBoxLayout();
@@ -52,15 +73,14 @@ void StreamWindow::Init() {
     auto addStage = [&](QString txt, int *v, int *h) {
         xLayout->addWidget(new QLabel(txt, this));
         QHBoxLayout *hBox = new QHBoxLayout();
-        
         QSlider *sv = new QSlider(Qt::Horizontal, this);
-        sv->setRange(0, 100); // ESCALA 0-100 CONFORME PEDIDO
+        sv->setRange(0, 100); // ESCALA 0-100
+        sv->setValue(*v);
         connect(sv, &QSlider::valueChanged, [v](int val){ *v = val; });
-        
         QSlider *sh = new QSlider(Qt::Horizontal, this);
         sh->setRange(-100, 100);
+        sh->setValue(*h);
         connect(sh, &QSlider::valueChanged, [h](int val){ *h = val; });
-
         hBox->addWidget(new QLabel("V:", this)); hBox->addWidget(sv);
         hBox->addWidget(new QLabel("H:", this)); hBox->addWidget(sh);
         xLayout->addLayout(hBox);
@@ -71,7 +91,7 @@ void StreamWindow::Init() {
     addStage("ESTÁGIO 3: FINAL (800ms+)", &v_stage3, &h_stage3);
     mainLayout->addWidget(ximGroup);
 
-    // --- 3. AJUSTES DE PRECISÃO GLOBAIS ---
+    // --- 3. AJUSTES DE PRECISÃO GLOBAIS (RESTAURADO) ---
     QGroupBox *globalGroup = new QGroupBox("AJUSTES DE PRECISÃO GLOBAIS", this);
     globalGroup->setStyleSheet("border: 1px solid #00FF41;");
     QVBoxLayout *gLayout = new QVBoxLayout(globalGroup);
@@ -94,11 +114,13 @@ void StreamWindow::Init() {
     addGlobal("Anti-Deadzone", 0, 5000, &anti_dz_global);
     mainLayout->addWidget(globalGroup);
 
-    // --- 4. MACROS & FUNÇÕES ---
+    // --- 4. MACROS ---
     QGroupBox *macroGroup = new QGroupBox("MACROS", this);
     QGridLayout *mLayout = new QGridLayout(macroGroup);
     QCheckBox *cb_sticky = new QCheckBox("STICKY AIM", this);
     QCheckBox *cb_rapid = new QCheckBox("RAPID FIRE", this);
+    cb_sticky->setChecked(sticky_aim_global);
+    cb_rapid->setChecked(rapid_fire_global);
     connect(cb_sticky, &QCheckBox::toggled, [](bool chk){ sticky_aim_global = chk; });
     connect(cb_rapid, &QCheckBox::toggled, [](bool chk){ rapid_fire_global = chk; });
     mLayout->addWidget(cb_sticky, 0, 0); mLayout->addWidget(cb_rapid, 0, 1);
@@ -110,4 +132,21 @@ void StreamWindow::Init() {
     session->Start();
 }
 
-// ... (Mantenha as funções de evento SessionQuit, keyPressEvent, etc., no final do arquivo)
+// --- FUNÇÕES DE SISTEMA (STUBS OBRIGATÓRIAS PARA O LINKER) ---
+void StreamWindow::SessionQuit(ChiakiQuitReason r, const QString &s) { close(); }
+void StreamWindow::LoginPINRequested(bool i) {}
+void StreamWindow::OnNewWebConnection() {}
+void StreamWindow::ToggleFullscreen() { if(isFullScreen()) showNormal(); else showFullScreen(); }
+
+// Eventos de Input
+void StreamWindow::keyPressEvent(QKeyEvent *e) { if(session) session->HandleKeyboardEvent(e); }
+void StreamWindow::keyReleaseEvent(QKeyEvent *e) { if(session) session->HandleKeyboardEvent(e); }
+void StreamWindow::mousePressEvent(QMouseEvent *e) { if(session) session->HandleMouseEvent(e); }
+void StreamWindow::mouseReleaseEvent(QMouseEvent *e) { if(session) session->HandleMouseEvent(e); }
+void StreamWindow::mouseDoubleClickEvent(QMouseEvent *e) { ToggleFullscreen(); }
+
+// Eventos de Janela (Os que causaram o erro no LD.EXE)
+void StreamWindow::closeEvent(QCloseEvent *e) { if(session) session->Stop(); }
+void StreamWindow::moveEvent(QMoveEvent *e) { QMainWindow::moveEvent(e); }
+void StreamWindow::resizeEvent(QResizeEvent *e) { QMainWindow::resizeEvent(e); }
+void StreamWindow::changeEvent(QEvent *e) { QMainWindow::changeEvent(e); }
