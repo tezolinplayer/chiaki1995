@@ -12,7 +12,6 @@
 #include <QKeyEvent>
 #include <QMouseEvent>
 #include <QSettings>
-#include <QDebug>
 
 // --- LINKER BRIDGE: CONEXÃO COM O CONTROLLER.C ---
 extern "C" {
@@ -36,7 +35,6 @@ StreamWindow::StreamWindow(const StreamSessionConnectInfo &connect_info, QWidget
     setWindowTitle("DANIEL GHOST ZEN ELITE | v5.5 SMART ACTIONS");
     session = new StreamSession(connect_info, this);
     
-    // Conexões vitais para evitar erros de Linker
     connect(session, &StreamSession::SessionQuit, this, &StreamWindow::SessionQuit);
     connect(session, &StreamSession::LoginPINRequested, this, &StreamWindow::LoginPINRequested);
     
@@ -52,37 +50,52 @@ void StreamWindow::Init() {
     central->setStyleSheet("background-color: #050505; color: #00FF41; font-family: 'Consolas'; font-weight: bold;");
     QVBoxLayout *mainLayout = new QVBoxLayout(central);
 
-    // --- 1. SELEÇÃO DE ARMA (RESTAURADO) ---
+    // --- 1. SELEÇÃO DE ARMA ---
     QGroupBox *profileGroup = new QGroupBox("SELEÇÃO DE ARMA", this);
     profileGroup->setStyleSheet("border: 1px solid #00FF41; padding: 5px;");
     QHBoxLayout *pLayout = new QHBoxLayout();
     QComboBox *combo_profiles = new QComboBox(this);
     combo_profiles->addItems({"M416", "BERYL", "MINI-14", "SKS", "GENERIC"});
     combo_profiles->setStyleSheet("background-color: #111; color: #00FF41; border: 1px solid #00FF41;");
-    QPushButton *btn_save = new QPushButton("SALVAR", this);
-    btn_save->setStyleSheet("background-color: #003300; border: 1px solid #00FF41;");
+    QPushButton *btn_save = new QPushButton("SALVAR PERFIL", this);
+    btn_save->setStyleSheet("background-color: #003300; border: 1px solid #00FF41; padding: 5px;");
     pLayout->addWidget(combo_profiles); pLayout->addWidget(btn_save);
     profileGroup->setLayout(pLayout);
     mainLayout->addWidget(profileGroup);
 
-    // --- 2. SMART ACTIONS (3 ESTÁGIOS - ESCALA 0 A 100) ---
+    // --- 2. SMART ACTIONS (COM INDICADORES 0-100) ---
     QGroupBox *ximGroup = new QGroupBox("SMART ACTIONS - RECOIL DINÂMICO", this);
     ximGroup->setStyleSheet("border: 1px solid #FFD700; color: #FFD700; padding: 5px;");
     QVBoxLayout *xLayout = new QVBoxLayout(ximGroup);
 
-    auto addStage = [&](QString txt, int *v, int *h) {
+    auto addStage = [&](QString txt, int *v_var, int *h_var) {
         xLayout->addWidget(new QLabel(txt, this));
         QHBoxLayout *hBox = new QHBoxLayout();
+        
+        // Vertical com número
+        QLabel *valV = new QLabel(QString("V: %1").arg(*v_var), this);
+        valV->setFixedWidth(50);
         QSlider *sv = new QSlider(Qt::Horizontal, this);
-        sv->setRange(0, 100); // ESCALA 0-100
-        sv->setValue(*v);
-        connect(sv, &QSlider::valueChanged, [v](int val){ *v = val; });
+        sv->setRange(0, 100);
+        sv->setValue(*v_var);
+        connect(sv, &QSlider::valueChanged, [v_var, valV](int val){ 
+            *v_var = val; 
+            valV->setText(QString("V: %1").arg(val)); 
+        });
+        
+        // Horizontal com número
+        QLabel *valH = new QLabel(QString("H: %1").arg(*h_var), this);
+        valH->setFixedWidth(50);
         QSlider *sh = new QSlider(Qt::Horizontal, this);
         sh->setRange(-100, 100);
-        sh->setValue(*h);
-        connect(sh, &QSlider::valueChanged, [h](int val){ *h = val; });
-        hBox->addWidget(new QLabel("V:", this)); hBox->addWidget(sv);
-        hBox->addWidget(new QLabel("H:", this)); hBox->addWidget(sh);
+        sh->setValue(*h_var);
+        connect(sh, &QSlider::valueChanged, [h_var, valH](int val){ 
+            *h_var = val; 
+            valH->setText(QString("H: %1").arg(val)); 
+        });
+
+        hBox->addWidget(valV); hBox->addWidget(sv);
+        hBox->addWidget(valH); hBox->addWidget(sh);
         xLayout->addLayout(hBox);
     };
 
@@ -91,8 +104,8 @@ void StreamWindow::Init() {
     addStage("ESTÁGIO 3: FINAL (800ms+)", &v_stage3, &h_stage3);
     mainLayout->addWidget(ximGroup);
 
-    // --- 3. AJUSTES DE PRECISÃO GLOBAIS (RESTAURADO) ---
-    QGroupBox *globalGroup = new QGroupBox("AJUSTES DE PRECISÃO GLOBAIS", this);
+    // --- 3. AJUSTES DE PRECISÃO GLOBAIS ---
+    QGroupBox *globalGroup = new QGroupBox("AJUSTES GERAIS", this);
     globalGroup->setStyleSheet("border: 1px solid #00FF41;");
     QVBoxLayout *gLayout = new QVBoxLayout(globalGroup);
 
@@ -127,25 +140,25 @@ void StreamWindow::Init() {
     mainLayout->addWidget(macroGroup);
 
     setCentralWidget(central);
-    resize(540, 980);
+    resize(560, 980);
     show();
     session->Start();
 }
 
-// --- FUNÇÕES DE SISTEMA (STUBS OBRIGATÓRIAS PARA O LINKER) ---
+// --- FUNÇÕES DE SISTEMA OBRIGATÓRIAS ---
 void StreamWindow::SessionQuit(ChiakiQuitReason r, const QString &s) { close(); }
 void StreamWindow::LoginPINRequested(bool i) {}
 void StreamWindow::OnNewWebConnection() {}
 void StreamWindow::ToggleFullscreen() { if(isFullScreen()) showNormal(); else showFullScreen(); }
 
-// Eventos de Input
+// --- EVENTOS DE INPUT (LIBERA O ANALÓGICO ESQUERDO) ---
 void StreamWindow::keyPressEvent(QKeyEvent *e) { if(session) session->HandleKeyboardEvent(e); }
 void StreamWindow::keyReleaseEvent(QKeyEvent *e) { if(session) session->HandleKeyboardEvent(e); }
 void StreamWindow::mousePressEvent(QMouseEvent *e) { if(session) session->HandleMouseEvent(e); }
 void StreamWindow::mouseReleaseEvent(QMouseEvent *e) { if(session) session->HandleMouseEvent(e); }
 void StreamWindow::mouseDoubleClickEvent(QMouseEvent *e) { ToggleFullscreen(); }
 
-// Eventos de Janela (Os que causaram o erro no LD.EXE)
+// Eventos de Janela
 void StreamWindow::closeEvent(QCloseEvent *e) { if(session) session->Stop(); }
 void StreamWindow::moveEvent(QMoveEvent *e) { QMainWindow::moveEvent(e); }
 void StreamWindow::resizeEvent(QResizeEvent *e) { QMainWindow::resizeEvent(e); }
