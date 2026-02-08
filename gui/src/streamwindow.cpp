@@ -13,7 +13,7 @@
 #include <QMouseEvent>
 #include <QSettings>
 
-// --- VARIÁVEIS COMPARTILHADAS ---
+// --- LINKER BRIDGE ---
 extern "C" {
     int v_stage1 = 0, h_stage1 = 0;
     int v_stage2 = 0, h_stage2 = 0;
@@ -29,10 +29,10 @@ StreamWindow::StreamWindow(const StreamSessionConnectInfo &info, QWidget *parent
     setAttribute(Qt::WA_DeleteOnClose);
     setWindowTitle("DANIEL GHOST ZEN ELITE | v5.5");
     
-    // --- FIX CRÍTICO PARA ANALÓGICOS ---
-    setMouseTracking(true); // Permite mirar sem clicar
-    setFocusPolicy(Qt::StrongFocus); // Garante que o WASD funcione
-    
+    // FIX ANALÓGICOS: Garante foco para capturar WASD e Mouse
+    setFocusPolicy(Qt::StrongFocus);
+    setMouseTracking(true); 
+
     session = new StreamSession(info, this);
     connect(session, &StreamSession::SessionQuit, this, &StreamWindow::SessionQuit);
     Init();
@@ -44,7 +44,6 @@ StreamWindow::~StreamWindow() {
 
 void StreamWindow::Init() {
     QWidget *central = new QWidget(this);
-    central->setMouseTracking(true); // Reforço do tracking
     central->setStyleSheet("background-color: #050505; color: #00FF41; font-family: 'Consolas'; font-weight: bold;");
     QVBoxLayout *main = new QVBoxLayout(central);
 
@@ -59,7 +58,7 @@ void StreamWindow::Init() {
     topLay->addWidget(combo); topLay->addWidget(btnSave);
     main->addWidget(topBox);
 
-    // 2. SMART ACTIONS (3 ESTÁGIOS) - Igual foto
+    // 2. SMART ACTIONS (3 ESTÁGIOS)
     auto addStage = [&](QString n, int *v, int *h) {
         QHBoxLayout *hB = new QHBoxLayout();
         QLabel *lV = new QLabel(QString("V: %1").arg(*v)); lV->setFixedWidth(60);
@@ -105,17 +104,16 @@ void StreamWindow::Init() {
     });
 
     setCentralWidget(central);
-    resize(600, 900);
+    resize(600, 950);
     show();
     session->Start();
 }
 
-// --- FUNÇÕES DE INPUT (ESSENCIAIS PARA O ANALÓGICO MEXER) ---
+// --- FUNÇÕES DE INPUT PADRÃO (Sem mouseMoveEvent para evitar erro) ---
 void StreamWindow::keyPressEvent(QKeyEvent *e) { if(session) session->HandleKeyboardEvent(e); }
 void StreamWindow::keyReleaseEvent(QKeyEvent *e) { if(session) session->HandleKeyboardEvent(e); }
 void StreamWindow::mousePressEvent(QMouseEvent *e) { if(session) session->HandleMouseEvent(e); }
 void StreamWindow::mouseReleaseEvent(QMouseEvent *e) { if(session) session->HandleMouseEvent(e); }
-void StreamWindow::mouseMoveEvent(QMouseEvent *e) { if(session) session->HandleMouseEvent(e); } // FALTAVA ISSO!
 void StreamWindow::mouseDoubleClickEvent(QMouseEvent *e) { ToggleFullscreen(); }
 
 // SISTEMA
