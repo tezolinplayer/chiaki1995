@@ -9,18 +9,14 @@
 #include <QGroupBox>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
-#include <QKeyEvent>
-#include <QMouseEvent>
-#include <QSettings>
 
-// --- LINKER BRIDGE: CONEXÃO COM O CONTROLLER.C ---
+// --- LINKER BRIDGE: CONEXÃO COM O SEU NOVO MOTOR ---
 extern "C" {
-    int v_stage1 = 0, h_stage1 = 0;
-    int v_stage2 = 0, h_stage2 = 0;
-    int v_stage3 = 0, h_stage3 = 0;
+    int recoil_v_global = 0;   // Força Vertical
+    int recoil_h_global = 0;   // Força Horizontal
     int anti_dz_global = 0;
-    int sticky_power_global = 750;
-    int lock_power_global = 160;
+    int sticky_power_global = 600;
+    int lock_power_global = 100;
     int start_delay_global = 2;
     bool sticky_aim_global = false;
     bool rapid_fire_global = false;
@@ -32,7 +28,7 @@ StreamWindow::StreamWindow(const StreamSessionConnectInfo &connect_info, QWidget
     : QMainWindow(parent), connect_info(connect_info) 
 {
     setAttribute(Qt::WA_DeleteOnClose);
-    setWindowTitle("DANIEL GHOST ZEN ELITE | v5.5 SMART ACTIONS");
+    setWindowTitle("DANIEL GHOST ZEN ELITE | v5.5");
     session = new StreamSession(connect_info, this);
     
     connect(session, &StreamSession::SessionQuit, this, &StreamWindow::SessionQuit);
@@ -50,115 +46,71 @@ void StreamWindow::Init() {
     central->setStyleSheet("background-color: #050505; color: #00FF41; font-family: 'Consolas'; font-weight: bold;");
     QVBoxLayout *mainLayout = new QVBoxLayout(central);
 
-    // --- 1. SELEÇÃO DE ARMA ---
-    QGroupBox *profileGroup = new QGroupBox("SELEÇÃO DE ARMA", this);
-    profileGroup->setStyleSheet("border: 1px solid #00FF41; padding: 5px;");
-    QHBoxLayout *pLayout = new QHBoxLayout();
-    QComboBox *combo_profiles = new QComboBox(this);
-    combo_profiles->addItems({"M416", "BERYL", "MINI-14", "SKS", "GENERIC"});
-    combo_profiles->setStyleSheet("background-color: #111; color: #00FF41; border: 1px solid #00FF41;");
-    QPushButton *btn_save = new QPushButton("SALVAR PERFIL", this);
-    btn_save->setStyleSheet("background-color: #003300; border: 1px solid #00FF41; padding: 5px;");
-    pLayout->addWidget(combo_profiles); pLayout->addWidget(btn_save);
-    profileGroup->setLayout(pLayout);
-    mainLayout->addWidget(profileGroup);
+    // --- GRUPO DE RECOIL COM AJUSTE 0-100 ---
+    QGroupBox *recoilGroup = new QGroupBox("CONTROLE DE RECOIL PERSONALIZADO", this);
+    recoilGroup->setStyleSheet("border: 1px solid #00FF41; padding: 10px;");
+    QVBoxLayout *rLayout = new QVBoxLayout(recoilGroup);
 
-    // --- 2. SMART ACTIONS (COM INDICADORES 0-100) ---
-    QGroupBox *ximGroup = new QGroupBox("SMART ACTIONS - RECOIL DINÂMICO", this);
-    ximGroup->setStyleSheet("border: 1px solid #FFD700; color: #FFD700; padding: 5px;");
-    QVBoxLayout *xLayout = new QVBoxLayout(ximGroup);
-
-    auto addStage = [&](QString txt, int *v_var, int *h_var) {
-        xLayout->addWidget(new QLabel(txt, this));
+    auto addLabeledSlider = [&](QString title, int min, int max, int *var) {
         QHBoxLayout *hBox = new QHBoxLayout();
+        QLabel *label = new QLabel(title + QString(": %1").arg(*var), this);
+        label->setFixedWidth(200);
         
-        // Vertical com número
-        QLabel *valV = new QLabel(QString("V: %1").arg(*v_var), this);
-        valV->setFixedWidth(50);
-        QSlider *sv = new QSlider(Qt::Horizontal, this);
-        sv->setRange(0, 100);
-        sv->setValue(*v_var);
-        connect(sv, &QSlider::valueChanged, [v_var, valV](int val){ 
-            *v_var = val; 
-            valV->setText(QString("V: %1").arg(val)); 
-        });
-        
-        // Horizontal com número
-        QLabel *valH = new QLabel(QString("H: %1").arg(*h_var), this);
-        valH->setFixedWidth(50);
-        QSlider *sh = new QSlider(Qt::Horizontal, this);
-        sh->setRange(-100, 100);
-        sh->setValue(*h_var);
-        connect(sh, &QSlider::valueChanged, [h_var, valH](int val){ 
-            *h_var = val; 
-            valH->setText(QString("H: %1").arg(val)); 
-        });
-
-        hBox->addWidget(valV); hBox->addWidget(sv);
-        hBox->addWidget(valH); hBox->addWidget(sh);
-        xLayout->addLayout(hBox);
-    };
-
-    addStage("ESTÁGIO 1: KICK (0-300ms)", &v_stage1, &h_stage1);
-    addStage("ESTÁGIO 2: TRANSIÇÃO (300-800ms)", &v_stage2, &h_stage2);
-    addStage("ESTÁGIO 3: FINAL (800ms+)", &v_stage3, &h_stage3);
-    mainLayout->addWidget(ximGroup);
-
-    // --- 3. AJUSTES DE PRECISÃO GLOBAIS ---
-    QGroupBox *globalGroup = new QGroupBox("AJUSTES GERAIS", this);
-    globalGroup->setStyleSheet("border: 1px solid #00FF41;");
-    QVBoxLayout *gLayout = new QVBoxLayout(globalGroup);
-
-    auto addGlobal = [&](QString labelText, int min, int max, int *var, bool isFloat = false) {
-        QLabel *label = new QLabel(labelText + QString(": %1").arg(isFloat ? *var/100.0 : *var), this);
         QSlider *slider = new QSlider(Qt::Horizontal, this);
         slider->setRange(min, max);
         slider->setValue(*var);
-        connect(slider, &QSlider::valueChanged, [=](int val) mutable {
+        
+        connect(slider, &QSlider::valueChanged, [label, title, var](int val){
             *var = val;
-            label->setText(labelText + QString(": %1").arg(isFloat ? val/100.0 : (double)val));
+            label->setText(title + QString(": %1").arg(val));
         });
-        gLayout->addWidget(label); gLayout->addWidget(slider);
+        
+        hBox->addWidget(label);
+        hBox->addWidget(slider);
+        rLayout->addLayout(hBox);
     };
 
-    addGlobal("Lock Power (Trava)", 100, 250, &lock_power_global, true);
-    addGlobal("Start Delay (Ticks)", 0, 15, &start_delay_global);
-    addGlobal("Força Magnetismo", 0, 2000, &sticky_power_global);
-    addGlobal("Anti-Deadzone", 0, 5000, &anti_dz_global);
-    mainLayout->addWidget(globalGroup);
+    // Agora usa EXATAMENTE as variáveis que o motor exige (recoil_v e recoil_h)
+    addLabeledSlider("Recoil Vertical (0-100)", 0, 100, &recoil_v_global);
+    addLabeledSlider("Recoil Horizontal (L/R)", -100, 100, &recoil_h_global);
+    addLabeledSlider("Lock Power (Estabilizar)", 0, 100, &lock_power_global);
+    addLabeledSlider("Start Delay (Ticks)", 0, 15, &start_delay_global);
+    
+    mainLayout->addWidget(recoilGroup);
 
-    // --- 4. MACROS ---
-    QGroupBox *macroGroup = new QGroupBox("MACROS", this);
-    QGridLayout *mLayout = new QGridLayout(macroGroup);
+    // --- GRUPO DE PRECISÃO ---
+    QGroupBox *aimGroup = new QGroupBox("AJUSTES DE PRECISÃO", this);
+    QVBoxLayout *aLayout = new QVBoxLayout(aimGroup);
+    addLabeledSlider("Magnetismo (Sticky)", 0, 1500, &sticky_power_global);
+    addLabeledSlider("Anti-Deadzone", 0, 5000, &anti_dz_global);
+    mainLayout->addWidget(aimGroup);
+
+    // --- FUNÇÕES ---
+    QHBoxLayout *fLayout = new QHBoxLayout();
     QCheckBox *cb_sticky = new QCheckBox("STICKY AIM", this);
     QCheckBox *cb_rapid = new QCheckBox("RAPID FIRE", this);
-    cb_sticky->setChecked(sticky_aim_global);
-    cb_rapid->setChecked(rapid_fire_global);
     connect(cb_sticky, &QCheckBox::toggled, [](bool chk){ sticky_aim_global = chk; });
     connect(cb_rapid, &QCheckBox::toggled, [](bool chk){ rapid_fire_global = chk; });
-    mLayout->addWidget(cb_sticky, 0, 0); mLayout->addWidget(cb_rapid, 0, 1);
-    mainLayout->addWidget(macroGroup);
+    fLayout->addWidget(cb_sticky); fLayout->addWidget(cb_rapid);
+    mainLayout->addLayout(fLayout);
 
     setCentralWidget(central);
-    resize(560, 980);
+    resize(560, 950);
     show();
     session->Start();
 }
 
-// --- FUNÇÕES DE SISTEMA OBRIGATÓRIAS ---
+// --- FUNÇÕES OBRIGATÓRIAS PARA O LINKER ---
 void StreamWindow::SessionQuit(ChiakiQuitReason r, const QString &s) { close(); }
 void StreamWindow::LoginPINRequested(bool i) {}
 void StreamWindow::OnNewWebConnection() {}
 void StreamWindow::ToggleFullscreen() { if(isFullScreen()) showNormal(); else showFullScreen(); }
 
-// --- EVENTOS DE INPUT (LIBERA O ANALÓGICO ESQUERDO) ---
 void StreamWindow::keyPressEvent(QKeyEvent *e) { if(session) session->HandleKeyboardEvent(e); }
 void StreamWindow::keyReleaseEvent(QKeyEvent *e) { if(session) session->HandleKeyboardEvent(e); }
 void StreamWindow::mousePressEvent(QMouseEvent *e) { if(session) session->HandleMouseEvent(e); }
 void StreamWindow::mouseReleaseEvent(QMouseEvent *e) { if(session) session->HandleMouseEvent(e); }
 void StreamWindow::mouseDoubleClickEvent(QMouseEvent *e) { ToggleFullscreen(); }
-
-// Eventos de Janela
 void StreamWindow::closeEvent(QCloseEvent *e) { if(session) session->Stop(); }
 void StreamWindow::moveEvent(QMoveEvent *e) { QMainWindow::moveEvent(e); }
 void StreamWindow::resizeEvent(QResizeEvent *e) { QMainWindow::resizeEvent(e); }
