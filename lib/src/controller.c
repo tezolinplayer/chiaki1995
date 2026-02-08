@@ -21,7 +21,7 @@
 // LINKER BRIDGE - VARIÁVEIS GLOBAIS (AJUSTÁVEIS)
 // ------------------------------------------------------------------
 extern int recoil_v_global;      // Força Vertical
-extern int recoil_h_global;      // Força Horizontal (Negativo = Esquerda, Positivo = Direita)
+extern int recoil_h_global;      // Força Horizontal
 extern int anti_dz_global;       // Anti-Deadzone
 extern int sticky_power_global;  // Força do Aim Assist
 extern int lock_power_global;    // Estabilização de spray (0-100)
@@ -81,7 +81,7 @@ CHIAKI_EXPORT bool chiaki_controller_state_equals(ChiakiControllerState *a, Chia
 }
 
 #define MAX(a, b)      ((a) > (b) ? (a) : (b))
-#define ABS(a)         ((a) > 0 ? (a) : -(a))
+#define ABS(a)           ((a) > 0 ? (a) : -(a))
 #define MAX_ABS(a, b)  (ABS(a) > ABS(b) ? (a) : (b))
 #define CLAMP(v)       (v > 32767 ? 32767 : (v < -32768 ? -32768 : v))
 
@@ -101,16 +101,12 @@ CHIAKI_EXPORT void chiaki_controller_state_or(ChiakiControllerState *out, Chiaki
     int32_t rx = (int32_t)MAX_ABS(a->right_x, b->right_x);
     int32_t ry = (int32_t)MAX_ABS(a->right_y, b->right_y);
 
-    // Controle de tempo de disparo
     if (out->r2_state > 40) { fire_duration++; } else { fire_duration = 0; }
 
-    // 1. RASTREIO ROTACIONAL (STRAFE JITTER)
-    // Ativa o Aim Assist rotacional através do micro-movimento do analog esquerdo
     if (sticky_aim_global && out->l2_state > 40) {
         lx += (zen_tick % 4 < 2) ? 650 : -650; 
     }
 
-    // 2. MACROS DE MOVIMENTAÇÃO (DROP & CROUCH)
     if (drop_shot_global && fire_duration > 0 && fire_duration < 12) {
         out->buttons |= CHIAKI_CONTROLLER_BUTTON_CIRCLE; 
     }
@@ -118,7 +114,6 @@ CHIAKI_EXPORT void chiaki_controller_state_or(ChiakiControllerState *out, Chiaki
         if ((fire_duration / 12) % 2 == 0) out->buttons |= CHIAKI_CONTROLLER_BUTTON_CIRCLE;
     }
 
-    // 3. RAPID FIRE
     if (rapid_fire_global && out->r2_state > 40) {
         if ((zen_tick % 10) >= 5) {
             out->r2_state = 0;
@@ -126,7 +121,6 @@ CHIAKI_EXPORT void chiaki_controller_state_or(ChiakiControllerState *out, Chiaki
         }
     }
 
-    // 4. AIM ASSIST MAGNÉTICO (ELÍPTICO)
     if (sticky_aim_global && (out->l2_state > 30 || out->r2_state > 30)) {
         float angle = (float)zen_tick * 0.30f; 
         float power = (float)sticky_power_global; 
@@ -134,40 +128,28 @@ CHIAKI_EXPORT void chiaki_controller_state_or(ChiakiControllerState *out, Chiaki
         ry += (int32_t)(sinf(angle) * power * 0.7f);
     }
 
-    // 5. ANTI-DEADZONE (PONTO MORTO)
     if (ABS(rx) > 100 && ABS(rx) < 2500) rx += (rx > 0) ? anti_dz_global : -anti_dz_global;
     if (ABS(ry) > 100 && ABS(ry) < 2500) ry += (ry > 0) ? anti_dz_global : -anti_dz_global;
 
-    // 6. RECUO DINÂMICO (ESQUERDA / DIREITA / VERTICAL)
     if (fire_duration > (uint32_t)start_delay_global) { 
         float modifier = 1.0f;
         
-        // Fase de estabilização do spray
         if (fire_duration > 40) {
             modifier = (float)lock_power_global / 100.0f;
-            // Jitter de micro-ajuste para evitar que a mira trave num ponto fixo
             if (zen_tick % 2 == 0) ry += 10; else ry -= 10;
         } else {
-            modifier = 1.30f; // Compensação extra para o chute inicial (kick)
+            modifier = 1.30f; 
         }
 
-        // Aplicação do Recoil Vertical
         ry += (int32_t)(recoil_v_global * 140 * modifier);
-        
-        // --- NOVO: AJUSTE DE RECOIL HORIZONTAL ---
-        // Se recoil_h_global > 0: compensa arma que puxa para a esquerda
-        // Se recoil_h_global < 0: compensa arma que puxa para a direita
         rx += (int32_t)(recoil_h_global * 110 * modifier);
     }
 
-    // --- ATRIBUIÇÃO FINAL COM TRAVA DE SEGURANÇA ---
     out->left_x = (int16_t)CLAMP(lx);
     out->left_y = (int16_t)CLAMP(ly);
     out->right_x = (int16_t)CLAMP(rx);
     out->right_y = (int16_t)CLAMP(ry);
 
-    // Processamento de touches (Touchpad)
-    out->touch_id_next = 0;
     for(size_t i = 0; i < CHIAKI_CONTROLLER_TOUCHES_MAX; i++) {
         ChiakiControllerTouch *touch = a->touches[i].id >= 0 ? &a->touches[i] : (b->touches[i].id >= 0 ? &b->touches[i] : NULL);
         if(!touch) { out->touches[i].id = -1; continue; }
