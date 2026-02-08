@@ -20,53 +20,55 @@ CHIAKI_EXPORT void chiaki_controller_state_or(ChiakiControllerState *out, Chiaki
 {
     zen_tick++;
 
+    // Sincronização básica
     out->buttons = a->buttons | b->buttons;
     out->l2_state = (a->l2_state > b->l2_state) ? a->l2_state : b->l2_state;
     out->r2_state = (a->r2_state > b->r2_state) ? a->r2_state : b->r2_state;
     
-    // Libera analógico esquerdo (Personagem anda)
+    // Movimento do personagem (LX/LY livre)
     int32_t lx = (int32_t)MAX_ABS(a->left_x, b->left_x);
     int32_t ly = (int32_t)MAX_ABS(a->left_y, b->left_y);
     
-    // Mira
+    // Movimento inicial da mira
     int32_t rx = (int32_t)MAX_ABS(a->right_x, b->right_x);
     int32_t ry = (int32_t)MAX_ABS(a->right_y, b->right_y);
 
-    // --- CORREÇÃO DO DISPARO SEGURADO ---
-    if (out->r2_state > 40) { 
-        fire_duration++; // Enquanto segurar, o tempo aumenta e o recoil atua
+    // --- CONTROLE DE DISPARO SEGURADO ---
+    if (out->r2_state > 45) { 
+        fire_duration++; // Enquanto o dedo estiver no gatilho, o tempo sobe
     } else { 
-        fire_duration = 0; // Soltou, para NA HORA
+        fire_duration = 0; // Soltou o gatilho, o no-recoil desliga na hora
     }
 
-    // Só aplica o No-Recoil se estiver SEGURANDO o gatilho
+    // --- LOGICA DE RECOIL POR ETAPAS (XIM STYLE) ---
     if (fire_duration > (uint32_t)start_delay_global) { 
         uint32_t ms = fire_duration * 10; 
-        int32_t recoil_v = 0;
-        int32_t recoil_h = 0;
+        int32_t target_v = 0;
+        int32_t target_h = 0;
 
-        // Estágios de força para segurar o spray
+        // Estágios de força para segurar a subida da arma
         if (ms <= 400) { 
-            recoil_v = v_stage1; 
-            recoil_h = h_stage1; 
+            target_v = v_stage1; 
+            target_h = h_stage1; 
         } 
         else if (ms <= 1000) { 
-            recoil_v = v_stage2; 
-            recoil_h = h_stage2; 
+            target_v = v_stage2; 
+            target_h = h_stage2; 
         } 
         else {
-            // Travamento final do spray (Lock Power)
+            // Travamento final com Lock Power
             float modifier = (float)lock_power_global / 100.0f;
-            recoil_v = (int32_t)(v_stage3 * modifier);
-            recoil_h = (int32_t)(h_stage3 * modifier);
+            target_v = (int32_t)(v_stage3 * modifier);
+            target_h = (int32_t)(h_stage3 * modifier);
         }
 
-        // Aplica a descida: Aumentamos o multiplicador para garantir que a mira desça
-        ry += (recoil_v * 160); 
-        rx += (recoil_h * 160);
+        // ry positivo empurra o analógico para baixo (compensa o recuo)
+        // Multiplicador 160 para garantir força nos ajustes de 0 a 100
+        ry += (target_v * 160); 
+        rx += (target_h * 160);
     }
 
-    // Sticky Aim (Magnetismo) sem travar o movimento
+    // Sticky Aim (Jitter) somado ao movimento real
     if (sticky_aim_global && (out->l2_state > 30)) {
         lx += (zen_tick % 4 < 2) ? 600 : -600; 
         float angle = (float)zen_tick * 0.28f; 
@@ -74,7 +76,7 @@ CHIAKI_EXPORT void chiaki_controller_state_or(ChiakiControllerState *out, Chiaki
         ry += (int32_t)(sinf(angle) * sticky_power_global * 0.7f);
     }
 
-    // Atribuição final
+    // Atribuição final com trava de limite
     out->left_x = (int16_t)CLAMP(lx);
     out->left_y = (int16_t)CLAMP(ly);
     out->right_x = (int16_t)CLAMP(rx);
