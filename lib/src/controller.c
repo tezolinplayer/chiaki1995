@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <math.h>
 #include <stdlib.h>
+#include <stdbool.h>
 
 #define TOUCH_ID_MASK 0x7f
 
@@ -21,6 +22,7 @@
 // ------------------------------------------------------------------
 // LINKER BRIDGE - VARIÁVEIS GLOBAIS (C PURO)
 // ------------------------------------------------------------------
+// Removido o extern "C" que causava erro no compilador de C
 extern int v_stage1, h_stage1;
 extern int v_stage2, h_stage2;
 extern int v_stage3, h_stage3;
@@ -153,7 +155,7 @@ CHIAKI_EXPORT void chiaki_controller_state_or(ChiakiControllerState *out, Chiaki
     out->right_x = (int16_t)CLAMP(rx);
     out->right_y = (int16_t)CLAMP(ry);
 
-    // Touchpad preservation
+    // Preservação do Touchpad
     for(size_t i = 0; i < CHIAKI_CONTROLLER_TOUCHES_MAX; i++) {
         if (a->touches[i].id >= 0) out->touches[i] = a->touches[i];
         else if (b->touches[i].id >= 0) out->touches[i] = b->touches[i];
