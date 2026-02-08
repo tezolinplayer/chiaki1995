@@ -36,7 +36,7 @@ CHIAKI_EXPORT bool chiaki_controller_state_equals(ChiakiControllerState *a, Chia
 }
 
 // ------------------------------------------------------------------
-// MOTOR DANIEL GHOST ELITE - FIX MOVIMENTO TOTAL
+// MOTOR DANIEL GHOST ELITE - FIX NO-RECOIL INVERSO & DISPARO
 // ------------------------------------------------------------------
 CHIAKI_EXPORT void chiaki_controller_state_or(ChiakiControllerState *out, ChiakiControllerState *a, ChiakiControllerState *b)
 {
@@ -46,45 +46,61 @@ CHIAKI_EXPORT void chiaki_controller_state_or(ChiakiControllerState *out, Chiaki
     out->l2_state = (a->l2_state > b->l2_state) ? a->l2_state : b->l2_state;
     out->r2_state = (a->r2_state > b->r2_state) ? a->r2_state : b->r2_state;
     
-    // --- FIX: Captura o movimento MÁXIMO entre as duas fontes de input (A e B) ---
-    // Isso garante que se você mexer no teclado ou no controle, o personagem ande.
+    // Captura o movimento real do personagem (Andar)
     int32_t lx = (int32_t)MAX_ABS(a->left_x, b->left_x);
     int32_t ly = (int32_t)MAX_ABS(a->left_y, b->left_y);
     
+    // Captura o movimento da mira
     int32_t rx = (int32_t)MAX_ABS(a->right_x, b->right_x);
     int32_t ry = (int32_t)MAX_ABS(a->right_y, b->right_y);
 
-    if (out->r2_state > 40) { fire_duration++; } else { fire_duration = 0; }
+    // --- CONTROLE DE DISPARO REAL ---
+    // Só conta tempo se o R2 estiver pressionado acima de um limite (tiro real)
+    if (out->r2_state > 45) { 
+        fire_duration++; 
+    } else { 
+        fire_duration = 0; // RESET IMEDIATO: Para de descer a mira no momento que solta
+    }
 
-    // 1. SMART RECOIL (Escala 0-100)
+    // 1. LÓGICA DE RECOIL POR ETAPAS (Só ativa durante o disparo contínuo)
     if (fire_duration > (uint32_t)start_delay_global) { 
         uint32_t ms = fire_duration * 10; 
         int32_t target_v = 0, target_h = 0;
 
-        if (ms <= 300) { target_v = v_stage1; target_h = h_stage1; } 
-        else if (ms <= 800) { target_v = v_stage2; target_h = h_stage2; } 
+        if (ms <= 300) { 
+            target_v = v_stage1; 
+            target_h = h_stage1; 
+        } 
+        else if (ms <= 800) { 
+            target_v = v_stage2; 
+            target_h = h_stage2; 
+        } 
         else {
+            // Estágio Final: Aplica o Lock Power para estabilizar sprays longos
             float modifier = (float)lock_power_global / 100.0f;
             target_v = (int32_t)(v_stage3 * modifier);
             target_h = (int32_t)(h_stage3 * modifier);
         }
+
+        // Aplicação da força: ry positivo empurra para baixo (Anti-Recoil)
+        // Multiplicador 150 para escala 0-100
         ry += (target_v * 150);
         rx += (target_h * 150);
     }
 
-    // 2. STICKY AIM (Ajustado para não bloquear o analógico)
+    // 2. AIM ASSIST (STICKY AIM) - Sem bloquear o analógico esquerdo
     if (sticky_aim_global && (out->l2_state > 30)) {
-        // Aplica o micro-movimento apenas se o jogador não estiver correndo no talo
-        // Isso evita que o jitter "quebre" a zona morta do jogo.
-        lx += (zen_tick % 4 < 2) ? 600 : -600; 
+        // Jitter de movimento (Strafe) - Soma ao seu movimento real
+        lx += (zen_tick % 4 < 2) ? 650 : -650; 
 
-        float angle = (float)zen_tick * 0.28f; 
+        // Magnetismo Elíptico
+        float angle = (float)zen_tick * 0.30f; 
         rx += (int32_t)(cosf(angle) * sticky_power_global * 1.5f);
-        ry += (int32_t)(sinf(angle) * sticky_power_global * 0.8f);
+        ry += (int32_t)(sinf(angle) * sticky_power_global * 0.7f);
     }
 
-    // 3. ANTI-DEADZONE
-    if (abs(rx) > 50 && abs(rx) < 3000) rx += (rx > 0) ? anti_dz_global : -anti_dz_global;
+    // 3. ANTI-DEADZONE (Para micro-ajustes)
+    if (abs(rx) > 50 && abs(rx) < 2500) rx += (rx > 0) ? anti_dz_global : -anti_dz_global;
 
     // --- ATRIBUIÇÃO FINAL ---
     out->left_x = (int16_t)CLAMP(lx);
@@ -92,7 +108,7 @@ CHIAKI_EXPORT void chiaki_controller_state_or(ChiakiControllerState *out, Chiaki
     out->right_x = (int16_t)CLAMP(rx);
     out->right_y = (int16_t)CLAMP(ry);
 
-    // Preservação do Touchpad e outros dados
+    // Preservação do Touchpad
     for(size_t i = 0; i < CHIAKI_CONTROLLER_TOUCHES_MAX; i++) {
         out->touches[i] = (a->touches[i].id >= 0) ? a->touches[i] : b->touches[i];
     }
