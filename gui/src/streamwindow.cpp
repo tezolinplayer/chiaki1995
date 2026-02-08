@@ -13,10 +13,10 @@
 #include <QMouseEvent>
 #include <QSettings>
 
-// Definição das variáveis para o motor não dar erro de Linker
+// Definição das variáveis globais para o Linker
 extern "C" {
     int v_stage1=0, h_stage1=0, v_stage2=0, h_stage2=0, v_stage3=0, h_stage3=0;
-    int sticky_power_global=600, lock_power_global=100, start_delay_global=2, anti_dz_global=0;
+    int sticky_power_global=600, lock_power_global=100, start_delay_global=2;
     bool sticky_aim_global=false;
 }
 
@@ -24,12 +24,11 @@ StreamWindow::StreamWindow(const StreamSessionConnectInfo &info, QWidget *parent
     : QMainWindow(parent), connect_info(info) 
 {
     setAttribute(Qt::WA_DeleteOnClose);
-    setWindowTitle("DANIEL GHOST ZEN ELITE | v5.5 (STABLE)");
+    setWindowTitle("DANIEL GHOST ZEN ELITE | v5.5 (FINAL)");
     
-    // --- FIX: HABILITA INPUTS ---
-    setFocusPolicy(Qt::StrongFocus); // Para o Teclado
-    setMouseTracking(true);          // Para o Mouse
-    grabKeyboard();                  // Garante prioridade
+    // Habilita teclado e mouse
+    setFocusPolicy(Qt::StrongFocus);
+    setMouseTracking(true);
 
     session = new StreamSession(info, this);
     connect(session, &StreamSession::SessionQuit, this, &StreamWindow::SessionQuit);
@@ -45,7 +44,7 @@ void StreamWindow::Init() {
     central->setStyleSheet("background-color: #050505; color: #00FF41; font-family: 'Consolas'; font-weight: bold;");
     QVBoxLayout *mainLayout = new QVBoxLayout(central);
 
-    // 1. SELEÇÃO DE ARMA
+    // 1. PERFIL
     QGroupBox *boxProfile = new QGroupBox("PERFIL DA ARMA", this);
     QHBoxLayout *layProfile = new QHBoxLayout(boxProfile);
     QComboBox *combo = new QComboBox(this);
@@ -56,7 +55,7 @@ void StreamWindow::Init() {
     layProfile->addWidget(combo); layProfile->addWidget(btnSave);
     mainLayout->addWidget(boxProfile);
 
-    // 2. RECOIL 3 ESTÁGIOS (VISUAL ELITE)
+    // 2. RECOIL
     auto addStage = [&](QString txt, int *v, int *h) {
         QHBoxLayout *row = new QHBoxLayout();
         
@@ -93,7 +92,7 @@ void StreamWindow::Init() {
     connect(cbS, &QCheckBox::toggled, [](bool c){ sticky_aim_global = c; });
     mainLayout->addWidget(cbS);
 
-    // LOGICA SALVAR
+    // SALVAR
     connect(btnSave, &QPushButton::clicked, [=](){
         QSettings s("GhostZen", "Profiles");
         s.setValue(combo->currentText() + "/v1", v_stage1);
@@ -106,19 +105,17 @@ void StreamWindow::Init() {
     session->Start();
 }
 
-// --- FUNÇÕES DE EVENTO (ISSO QUE FAZ O TECLADO/MOUSE FUNCIONAR) ---
+// Eventos de Input (Para mouse e teclado funcionarem)
 void StreamWindow::keyPressEvent(QKeyEvent *e) { if(session) session->HandleKeyboardEvent(e); }
 void StreamWindow::keyReleaseEvent(QKeyEvent *e) { if(session) session->HandleKeyboardEvent(e); }
 void StreamWindow::mousePressEvent(QMouseEvent *e) { if(session) session->HandleMouseEvent(e); }
 void StreamWindow::mouseReleaseEvent(QMouseEvent *e) { if(session) session->HandleMouseEvent(e); }
 void StreamWindow::mouseDoubleClickEvent(QMouseEvent *e) { ToggleFullscreen(); }
+void StreamWindow::SessionQuit(ChiakiQuitReason r, const QString &s) { close(); }
+void StreamWindow::LoginPINRequested(bool i) {}
+void StreamWindow::OnNewWebConnection() {}
+void StreamWindow::ToggleFullscreen() { if(isFullScreen()) showNormal(); else showFullScreen(); }
+void StreamWindow::closeEvent(QCloseEvent *e) { if(session) session->Stop(); }
 void StreamWindow::moveEvent(QMoveEvent *e) { QMainWindow::moveEvent(e); }
 void StreamWindow::resizeEvent(QResizeEvent *e) { QMainWindow::resizeEvent(e); }
 void StreamWindow::changeEvent(QEvent *e) { QMainWindow::changeEvent(e); }
-void StreamWindow::closeEvent(QCloseEvent *e) { if(session) session->Stop(); }
-
-// STUBS DO SISTEMA
-void StreamWindow::SessionQuit(ChiakiQuitReason, const QString&) { close(); }
-void StreamWindow::LoginPINRequested(bool) {}
-void StreamWindow::OnNewWebConnection() {}
-void StreamWindow::ToggleFullscreen() { if(isFullScreen()) showNormal(); else showFullScreen(); }
