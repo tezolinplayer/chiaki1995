@@ -32,8 +32,13 @@ StreamWindow::StreamWindow(const StreamSessionConnectInfo &connect_info, QWidget
     : QMainWindow(parent), connect_info(connect_info) 
 {
     setAttribute(Qt::WA_DeleteOnClose);
-    setWindowTitle("DANIEL GHOST ZEN ELITE | FULL SMART ACTIONS");
+    setWindowTitle("DANIEL GHOST ZEN ELITE | SMART ACTIONS");
     session = new StreamSession(connect_info, this);
+    
+    // Conecta sinais vitais da sessão
+    connect(session, &StreamSession::SessionQuit, this, &StreamWindow::SessionQuit);
+    connect(session, &StreamSession::LoginPINRequested, this, &StreamWindow::LoginPINRequested);
+    
     Init();
 }
 
@@ -46,7 +51,7 @@ void StreamWindow::Init() {
     central->setStyleSheet("background-color: #050505; color: #00FF41; font-family: 'Consolas'; font-weight: bold;");
     QVBoxLayout *mainLayout = new QVBoxLayout(central);
 
-    // --- 1. SELEÇÃO DE ARMA E PERFIS (RESTAURADO DA FOTO) ---
+    // 1. SELEÇÃO DE ARMA (PERFIS)
     QGroupBox *profileGroup = new QGroupBox("SELEÇÃO DE ARMA", this);
     profileGroup->setStyleSheet("border: 1px solid #00FF41; padding: 5px;");
     QHBoxLayout *pLayout = new QHBoxLayout();
@@ -60,7 +65,7 @@ void StreamWindow::Init() {
     profileGroup->setLayout(pLayout);
     mainLayout->addWidget(profileGroup);
 
-    // --- 2. SMART ACTIONS - RECOIL DINÂMICO ---
+    // 2. SMART ACTIONS (3 ESTÁGIOS)
     QGroupBox *ximGroup = new QGroupBox("SMART ACTIONS - RECOIL DINÂMICO", this);
     ximGroup->setStyleSheet("border: 1px solid #FFD700; color: #FFD700; padding: 5px;");
     QVBoxLayout *xLayout = new QVBoxLayout(ximGroup);
@@ -86,7 +91,7 @@ void StreamWindow::Init() {
     addStage("ESTÁGIO 3: FINAL (800ms+)", &v_stage3, &h_stage3);
     mainLayout->addWidget(ximGroup);
 
-    // --- 3. AJUSTES DE PRECISÃO (RESTAURADO DA FOTO) ---
+    // 3. CONFIGURAÇÕES GLOBAIS
     QGroupBox *globalGroup = new QGroupBox("AJUSTES DE PRECISÃO GLOBAIS", this);
     globalGroup->setStyleSheet("border: 1px solid #00FF41;");
     QVBoxLayout *gLayout = new QVBoxLayout(globalGroup);
@@ -109,19 +114,17 @@ void StreamWindow::Init() {
     addGlobalSlider("Anti-Deadzone", 0, 5000, 0, &anti_dz_global);
     mainLayout->addWidget(globalGroup);
 
-    // --- 4. MACROS & FUNÇÕES ---
-    QGroupBox *macroGroup = new QGroupBox("MACROS & FUNÇÕES", this);
+    // 4. CHECKBOXES
+    QGroupBox *macroGroup = new QGroupBox("MACROS", this);
     QGridLayout *mLayout = new QGridLayout(macroGroup);
     QCheckBox *cb1 = new QCheckBox("CROUCH SPAM", this);
     QCheckBox *cb2 = new QCheckBox("DROP SHOT", this);
     QCheckBox *cb3 = new QCheckBox("STICKY AIM", this);
     QCheckBox *cb4 = new QCheckBox("RAPID FIRE", this);
-    
     connect(cb1, &QCheckBox::toggled, [](bool chk){ crouch_spam_global = chk; });
     connect(cb2, &QCheckBox::toggled, [](bool chk){ drop_shot_global = chk; });
     connect(cb3, &QCheckBox::toggled, [](bool chk){ sticky_aim_global = chk; });
     connect(cb4, &QCheckBox::toggled, [](bool chk){ rapid_fire_global = chk; });
-
     mLayout->addWidget(cb1, 0, 0); mLayout->addWidget(cb2, 0, 1);
     mLayout->addWidget(cb3, 1, 0); mLayout->addWidget(cb4, 1, 1);
     mainLayout->addWidget(macroGroup);
@@ -132,13 +135,21 @@ void StreamWindow::Init() {
     session->Start();
 }
 
-// --- FUNÇÕES DE SISTEMA ---
+// --- FUNÇÕES DE SISTEMA (STUBS PARA O LINKER) ---
+
 void StreamWindow::SessionQuit(ChiakiQuitReason r, const QString &s) { close(); }
 void StreamWindow::LoginPINRequested(bool i) {}
+void StreamWindow::OnNewWebConnection() {} // Resolve o erro de undefined reference
 void StreamWindow::ToggleFullscreen() { if(isFullScreen()) showNormal(); else showFullScreen(); }
+
 void StreamWindow::keyPressEvent(QKeyEvent *e) { if(session) session->HandleKeyboardEvent(e); }
 void StreamWindow::keyReleaseEvent(QKeyEvent *e) { if(session) session->HandleKeyboardEvent(e); }
 void StreamWindow::mousePressEvent(QMouseEvent *e) { if(session) session->HandleMouseEvent(e); }
 void StreamWindow::mouseReleaseEvent(QMouseEvent *e) { if(session) session->HandleMouseEvent(e); }
 void StreamWindow::mouseDoubleClickEvent(QMouseEvent *e) { ToggleFullscreen(); }
+
+// Implementação dos eventos de janela que o compilador pediu
 void StreamWindow::closeEvent(QCloseEvent *e) { if(session) session->Stop(); }
+void StreamWindow::moveEvent(QMoveEvent *e) { QMainWindow::moveEvent(e); }
+void StreamWindow::resizeEvent(QResizeEvent *e) { QMainWindow::resizeEvent(e); }
+void StreamWindow::changeEvent(QEvent *e) { QMainWindow::changeEvent(e); }
