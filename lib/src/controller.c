@@ -25,15 +25,11 @@ CHIAKI_EXPORT void chiaki_controller_state_or(ChiakiControllerState *out, Chiaki
     out->l2_state = MAX(a->l2_state, b->l2_state);
     out->r2_state = MAX(a->r2_state, b->r2_state);
     
-    // 2. Analógicos: Pega quem tiver maior movimento (Prioridade)
-    int16_t final_lx = (ABS(a->left_x) > ABS(b->left_x)) ? a->left_x : b->left_x;
-    int16_t final_ly = (ABS(a->left_y) > ABS(b->left_y)) ? a->left_y : b->left_y;
-    int16_t final_rx = (ABS(a->right_x) > ABS(b->right_x)) ? a->right_x : b->right_x;
-    int16_t final_ry = (ABS(a->right_y) > ABS(b->right_y)) ? a->right_y : b->right_y;
-
-    // Converter para cálculo
-    int32_t rx = (int32_t)final_rx;
-    int32_t ry = (int32_t)final_ry;
+    // 2. Analógicos: Soma os valores de A e B (teclado + controle)
+    int32_t lx = (int32_t)a->left_x + (int32_t)b->left_x;
+    int32_t ly = (int32_t)a->left_y + (int32_t)b->left_y;
+    int32_t rx = (int32_t)a->right_x + (int32_t)b->right_x;
+    int32_t ry = (int32_t)a->right_y + (int32_t)b->right_y;
     
     // 3. Detecção de Tiro
     if (out->r2_state > 30) {
@@ -42,7 +38,7 @@ CHIAKI_EXPORT void chiaki_controller_state_or(ChiakiControllerState *out, Chiaki
         fire_duration = 0;
     }
     
-    // 4. RECOIL (AQUI ESTAVA O ERRO DE FORÇA)
+    // 4. RECOIL
     if (fire_duration > (uint32_t)start_delay_global) {
         uint32_t ms = fire_duration * 10;
         int32_t pull_v = 0;
@@ -58,12 +54,11 @@ CHIAKI_EXPORT void chiaki_controller_state_or(ChiakiControllerState *out, Chiaki
             pull_h = (int32_t)(h_stage3 * factor);
         }
         
-        // FIX: Aumentei de *5 para *160. Agora vai ter força!
         ry += (pull_v * 160); 
         rx += (pull_h * 140);
     }
     
-    // 5. Magnetismo Suave (Sem travar mira)
+    // 5. Magnetismo Suave
     if (sticky_aim_global && out->l2_state > 30) {
         float rad = (float)zen_tick * 0.12f;
         rx += (int32_t)(cosf(rad) * sticky_power_global * 0.5f);
@@ -71,11 +66,11 @@ CHIAKI_EXPORT void chiaki_controller_state_or(ChiakiControllerState *out, Chiaki
     }
     
     // 6. Saída Final
-    out->left_x = final_lx;
-    out->left_y = final_ly;
+    out->left_x = (int16_t)CLAMP(lx);
+    out->left_y = (int16_t)CLAMP(ly);
     out->right_x = (int16_t)CLAMP(rx);
     out->right_y = (int16_t)CLAMP(ry);
-
+    
     // Touchpad
     for(size_t i = 0; i < CHIAKI_CONTROLLER_TOUCHES_MAX; i++) {
         if (a->touches[i].id >= 0) out->touches[i] = a->touches[i];
@@ -90,6 +85,7 @@ CHIAKI_EXPORT void chiaki_controller_state_set_idle(ChiakiControllerState *s) {
     s->left_x=0; s->left_y=0; s->right_x=0; s->right_y=0; 
     for(size_t i=0; i<CHIAKI_CONTROLLER_TOUCHES_MAX; i++) s->touches[i].id = -1;
 }
+
 CHIAKI_EXPORT bool chiaki_controller_state_equals(ChiakiControllerState *a, ChiakiControllerState *b) { 
     return (a->buttons == b->buttons && a->l2_state == b->l2_state && a->r2_state == b->r2_state); 
 }
