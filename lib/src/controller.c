@@ -7,7 +7,7 @@
 #define TOUCH_ID_MASK 0x7f
 
 // ------------------------------------------------------------------
-// DANIEL GHOST ZEN - MÁSCARAS DE BITS (PS5)
+// MÁSCARAS DE BITS E DEFINIÇÕES
 // ------------------------------------------------------------------
 #ifndef CHIAKI_CONTROLLER_BUTTON_CIRCLE
 #define CHIAKI_CONTROLLER_BUTTON_CIRCLE 0x0004 
@@ -18,23 +18,23 @@
 #endif
 
 // ------------------------------------------------------------------
-// LINKER BRIDGE - VARIÁVEIS GLOBAIS
+// LINKER BRIDGE - VARIÁVEIS GLOBAIS (AJUSTÁVEIS)
 // ------------------------------------------------------------------
-extern int recoil_v_global;
-extern int recoil_h_global;
-extern int anti_dz_global;
-extern int sticky_power_global;
-extern int lock_power_global;   
-extern int start_delay_global;  
+extern int recoil_v_global;      // Força Vertical
+extern int recoil_h_global;      // Força Horizontal (Negativo = Esquerda, Positivo = Direita)
+extern int anti_dz_global;       // Anti-Deadzone
+extern int sticky_power_global;  // Força do Aim Assist
+extern int lock_power_global;    // Estabilização de spray (0-100)
+extern int start_delay_global;   // Atraso para iniciar recoil
 extern bool sticky_aim_global;
 extern bool rapid_fire_global;
 extern bool crouch_spam_global; 
-extern bool drop_shot_global;   
+extern bool drop_shot_global;    
 
 static uint32_t zen_tick = 0;
 static uint32_t fire_duration = 0; 
 
-// --- FUNÇÕES DE ESTADO BÁSICAS ---
+// --- FUNÇÕES DE ESTADO AUXILIARES ---
 
 CHIAKI_EXPORT void chiaki_controller_state_set_idle(ChiakiControllerState *state) {
     state->buttons = 0;
@@ -83,9 +83,10 @@ CHIAKI_EXPORT bool chiaki_controller_state_equals(ChiakiControllerState *a, Chia
 #define MAX(a, b)      ((a) > (b) ? (a) : (b))
 #define ABS(a)         ((a) > 0 ? (a) : -(a))
 #define MAX_ABS(a, b)  (ABS(a) > ABS(b) ? (a) : (b))
+#define CLAMP(v)       (v > 32767 ? 32767 : (v < -32768 ? -32768 : v))
 
 // ------------------------------------------------------------------
-// MOTOR DE PROCESSAMENTO DANIEL GHOST ELITE (v5.1)
+// MOTOR DANIEL GHOST ELITE - VERSÃO OTIMIZADA
 // ------------------------------------------------------------------
 CHIAKI_EXPORT void chiaki_controller_state_or(ChiakiControllerState *out, ChiakiControllerState *a, ChiakiControllerState *b)
 {
@@ -95,26 +96,26 @@ CHIAKI_EXPORT void chiaki_controller_state_or(ChiakiControllerState *out, Chiaki
     out->l2_state = MAX(a->l2_state, b->l2_state);
     out->r2_state = MAX(a->r2_state, b->r2_state);
     
-    // Captura o movimento REAL para não travar o personagem
     int32_t lx = (int32_t)MAX_ABS(a->left_x, b->left_x);
     int32_t ly = (int32_t)MAX_ABS(a->left_y, b->left_y);
     int32_t rx = (int32_t)MAX_ABS(a->right_x, b->right_x);
     int32_t ry = (int32_t)MAX_ABS(a->right_y, b->right_y);
 
+    // Controle de tempo de disparo
     if (out->r2_state > 40) { fire_duration++; } else { fire_duration = 0; }
 
-    // 1. RASTREIO ROTACIONAL (STRAFE JITTER - FIX)
-    // Soma a vibração ao seu movimento para ativar o Tracking sem parar o boneco
+    // 1. RASTREIO ROTACIONAL (STRAFE JITTER)
+    // Ativa o Aim Assist rotacional através do micro-movimento do analog esquerdo
     if (sticky_aim_global && out->l2_state > 40) {
         lx += (zen_tick % 4 < 2) ? 650 : -650; 
     }
 
-    // 2. MACROS DE MOVIMENTAÇÃO
-    if (drop_shot_global && fire_duration > 0 && fire_duration < 10) {
+    // 2. MACROS DE MOVIMENTAÇÃO (DROP & CROUCH)
+    if (drop_shot_global && fire_duration > 0 && fire_duration < 12) {
         out->buttons |= CHIAKI_CONTROLLER_BUTTON_CIRCLE; 
     }
-    if (crouch_spam_global && fire_duration > 0) {
-        if ((fire_duration / 15) % 2 == 0) out->buttons |= CHIAKI_CONTROLLER_BUTTON_CIRCLE;
+    if (crouch_spam_global && fire_duration > 15) {
+        if ((fire_duration / 12) % 2 == 0) out->buttons |= CHIAKI_CONTROLLER_BUTTON_CIRCLE;
     }
 
     // 3. RAPID FIRE
@@ -125,42 +126,47 @@ CHIAKI_EXPORT void chiaki_controller_state_or(ChiakiControllerState *out, Chiaki
         }
     }
 
-    // 4. SUPER MAGNETISMO ELÍPTICO (TRACKING FOLLOW)
+    // 4. AIM ASSIST MAGNÉTICO (ELÍPTICO)
     if (sticky_aim_global && (out->l2_state > 30 || out->r2_state > 30)) {
-        float angle = (float)zen_tick * 0.28f; 
+        float angle = (float)zen_tick * 0.30f; 
         float power = (float)sticky_power_global; 
-        rx += (int32_t)(cosf(angle) * power * 1.8f);
-        ry += (int32_t)(sinf(angle) * power * 0.8f);
-        if (zen_tick % 2 == 0) rx += 20; else rx -= 20;
+        rx += (int32_t)(cosf(angle) * power * 1.5f);
+        ry += (int32_t)(sinf(angle) * power * 0.7f);
     }
 
-    // 5. ANTI-DEADZONE
-    if (rx > 500) rx += anti_dz_global; else if (rx < -500) rx -= anti_dz_global;
-    if (ry > 500) ry += anti_dz_global; else if (ry < -500) ry -= anti_dz_global;
+    // 5. ANTI-DEADZONE (PONTO MORTO)
+    if (ABS(rx) > 100 && ABS(rx) < 2500) rx += (rx > 0) ? anti_dz_global : -anti_dz_global;
+    if (ABS(ry) > 100 && ABS(ry) < 2500) ry += (ry > 0) ? anti_dz_global : -anti_dz_global;
 
-    // 6. RECUO ESTÁTICO (SPRAY LOCK)
+    // 6. RECUO DINÂMICO (ESQUERDA / DIREITA / VERTICAL)
     if (fire_duration > (uint32_t)start_delay_global) { 
-        float multiplier = 1.0f;
-        if (fire_duration > 45) {
-            multiplier = (float)lock_power_global / 100.0f; 
-            if (zen_tick % 2 == 0) ry += 12; else ry -= 12;
-            rx += (int32_t)(recoil_h_global * 45); 
+        float modifier = 1.0f;
+        
+        // Fase de estabilização do spray
+        if (fire_duration > 40) {
+            modifier = (float)lock_power_global / 100.0f;
+            // Jitter de micro-ajuste para evitar que a mira trave num ponto fixo
+            if (zen_tick % 2 == 0) ry += 10; else ry -= 10;
         } else {
-            multiplier = 1.35f;
+            modifier = 1.30f; // Compensação extra para o chute inicial (kick)
         }
-        ry += (int32_t)(recoil_v_global * 150 * multiplier);
-        rx += (int32_t)(recoil_h_global * 150);
+
+        // Aplicação do Recoil Vertical
+        ry += (int32_t)(recoil_v_global * 140 * modifier);
+        
+        // --- NOVO: AJUSTE DE RECOIL HORIZONTAL ---
+        // Se recoil_h_global > 0: compensa arma que puxa para a esquerda
+        // Se recoil_h_global < 0: compensa arma que puxa para a direita
+        rx += (int32_t)(recoil_h_global * 110 * modifier);
     }
 
-    // --- SEGURANÇA E ATRIBUIÇÃO FINAL (TODOS OS EIXOS) ---
-    #define CLAMP(v) (v > 32767 ? 32767 : (v < -32768 ? -32768 : v))
-    
+    // --- ATRIBUIÇÃO FINAL COM TRAVA DE SEGURANÇA ---
     out->left_x = (int16_t)CLAMP(lx);
-    out->left_y = (int16_t)CLAMP(ly); // Agora o boneco anda para frente e para trás
+    out->left_y = (int16_t)CLAMP(ly);
     out->right_x = (int16_t)CLAMP(rx);
     out->right_y = (int16_t)CLAMP(ry);
 
-    // Processamento de touches preservado
+    // Processamento de touches (Touchpad)
     out->touch_id_next = 0;
     for(size_t i = 0; i < CHIAKI_CONTROLLER_TOUCHES_MAX; i++) {
         ChiakiControllerTouch *touch = a->touches[i].id >= 0 ? &a->touches[i] : (b->touches[i].id >= 0 ? &b->touches[i] : NULL);
