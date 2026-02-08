@@ -4,23 +4,23 @@
 #include <QLabel>
 #include <QSlider>
 #include <QCheckBox>
+#include <QComboBox>
+#include <QPushButton>
 #include <QGroupBox>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QKeyEvent>
 #include <QMouseEvent>
-#include <QTcpServer>
-#include <QTcpSocket>
+#include <QSettings>
 
 // --- LINKER BRIDGE: CONEXÃO COM O CONTROLLER.C ---
-// Essas variáveis são as mesmas que o motor do controle lê em tempo real
 extern "C" {
     int v_stage1 = 0, h_stage1 = 0;
     int v_stage2 = 0, h_stage2 = 0;
     int v_stage3 = 0, h_stage3 = 0;
     int anti_dz_global = 0;
     int sticky_power_global = 750;
-    int lock_power_global = 100;
+    int lock_power_global = 160;
     int start_delay_global = 2;
     bool sticky_aim_global = false;
     bool rapid_fire_global = false;
@@ -32,20 +32,13 @@ StreamWindow::StreamWindow(const StreamSessionConnectInfo &connect_info, QWidget
     : QMainWindow(parent), connect_info(connect_info) 
 {
     setAttribute(Qt::WA_DeleteOnClose);
-    setWindowTitle("DANIEL GHOST ZEN | SMART ACTIONS V5.5");
+    setWindowTitle("DANIEL GHOST ZEN ELITE | FULL SMART ACTIONS");
     session = new StreamSession(connect_info, this);
-    
-    // Conecta sinais vitais da sessão
-    connect(session, &StreamSession::SessionQuit, this, &StreamWindow::SessionQuit);
-    connect(session, &StreamSession::LoginPINRequested, this, &StreamWindow::LoginPINRequested);
-    
     Init();
 }
 
 StreamWindow::~StreamWindow() {
-    if (session) {
-        session->Stop();
-    }
+    if (session) session->Stop();
 }
 
 void StreamWindow::Init() {
@@ -53,90 +46,99 @@ void StreamWindow::Init() {
     central->setStyleSheet("background-color: #050505; color: #00FF41; font-family: 'Consolas'; font-weight: bold;");
     QVBoxLayout *mainLayout = new QVBoxLayout(central);
 
-    // --- PAINEL SMART ACTIONS (ESTILO XIM MATRIX) ---
+    // --- 1. SELEÇÃO DE ARMA E PERFIS (RESTAURADO DA FOTO) ---
+    QGroupBox *profileGroup = new QGroupBox("SELEÇÃO DE ARMA", this);
+    profileGroup->setStyleSheet("border: 1px solid #00FF41; padding: 5px;");
+    QHBoxLayout *pLayout = new QHBoxLayout();
+    QComboBox *combo_profiles = new QComboBox(this);
+    combo_profiles->addItems({"M416", "BERYL", "MINI-14", "SKS", "GENERIC"});
+    combo_profiles->setStyleSheet("background-color: #111; color: #00FF41; border: 1px solid #00FF41;");
+    QPushButton *btn_save = new QPushButton("SALVAR", this);
+    btn_save->setStyleSheet("background-color: #003300; border: 1px solid #00FF41;");
+    pLayout->addWidget(combo_profiles);
+    pLayout->addWidget(btn_save);
+    profileGroup->setLayout(pLayout);
+    mainLayout->addWidget(profileGroup);
+
+    // --- 2. SMART ACTIONS - RECOIL DINÂMICO ---
     QGroupBox *ximGroup = new QGroupBox("SMART ACTIONS - RECOIL DINÂMICO", this);
-    ximGroup->setStyleSheet("QGroupBox { border: 2px solid #FFD700; color: #FFD700; margin-top: 10px; padding: 10px; }");
+    ximGroup->setStyleSheet("border: 1px solid #FFD700; color: #FFD700; padding: 5px;");
     QVBoxLayout *xLayout = new QVBoxLayout(ximGroup);
 
-    auto addStageControl = [&](QString labelText, int *v_var, int *h_var) {
-        xLayout->addWidget(new QLabel(labelText, this));
+    auto addStage = [&](QString txt, int *v, int *h) {
+        xLayout->addWidget(new QLabel(txt, this));
         QHBoxLayout *hBox = new QHBoxLayout();
-        
         QSlider *sv = new QSlider(Qt::Horizontal, this);
         sv->setRange(0, 150);
-        sv->setValue(*v_var);
-        connect(sv, &QSlider::valueChanged, [v_var](int val){ *v_var = val; });
-        
+        sv->setValue(*v);
+        connect(sv, &QSlider::valueChanged, [v](int val){ *v = val; });
         QSlider *sh = new QSlider(Qt::Horizontal, this);
         sh->setRange(-100, 100);
-        sh->setValue(*h_var);
-        connect(sh, &QSlider::valueChanged, [h_var](int val){ *h_var = val; });
-
+        sh->setValue(*h);
+        connect(sh, &QSlider::valueChanged, [h](int val){ *h = val; });
         hBox->addWidget(new QLabel("V:", this)); hBox->addWidget(sv);
         hBox->addWidget(new QLabel("H:", this)); hBox->addWidget(sh);
         xLayout->addLayout(hBox);
     };
 
-    addStageControl("ESTÁGIO 1: KICK INICIAL (0-300ms)", &v_stage1, &h_stage1);
-    addStageControl("ESTÁGIO 2: TRANSIÇÃO (300-800ms)", &v_stage2, &h_stage2);
-    addStageControl("ESTÁGIO 3: ESTABILIZAÇÃO (800ms+)", &v_stage3, &h_stage3);
+    addStage("ESTÁGIO 1: KICK (0-300ms)", &v_stage1, &h_stage1);
+    addStage("ESTÁGIO 2: TRANSIÇÃO (300-800ms)", &v_stage2, &h_stage2);
+    addStage("ESTÁGIO 3: FINAL (800ms+)", &v_stage3, &h_stage3);
     mainLayout->addWidget(ximGroup);
 
-    // --- AJUSTES DE PRECISÃO ---
-    QGroupBox *globalGroup = new QGroupBox("GLOBAL SETTINGS", this);
+    // --- 3. AJUSTES DE PRECISÃO (RESTAURADO DA FOTO) ---
+    QGroupBox *globalGroup = new QGroupBox("AJUSTES DE PRECISÃO GLOBAIS", this);
     globalGroup->setStyleSheet("border: 1px solid #00FF41;");
     QVBoxLayout *gLayout = new QVBoxLayout(globalGroup);
 
-    QLabel *label_dz = new QLabel(QString("Anti-Deadzone: %1").arg(anti_dz_global), this);
-    QSlider *slider_dz = new QSlider(Qt::Horizontal, this);
-    slider_dz->setRange(0, 5000);
-    connect(slider_dz, &QSlider::valueChanged, [label_dz](int val){ 
-        anti_dz_global = val; 
-        label_dz->setText(QString("Anti-Deadzone: %1").arg(val));
-    });
-    
-    gLayout->addWidget(label_dz);
-    gLayout->addWidget(slider_dz);
+    auto addGlobalSlider = [&](QString labelText, int min, int max, int def, int *var, bool isFloat = false) {
+        QLabel *label = new QLabel(labelText + QString(": %1").arg(isFloat ? def/100.0 : def), this);
+        QSlider *slider = new QSlider(Qt::Horizontal, this);
+        slider->setRange(min, max);
+        slider->setValue(def);
+        connect(slider, &QSlider::valueChanged, [=](int val) mutable {
+            *var = val;
+            label->setText(labelText + QString(": %1").arg(isFloat ? val/100.0 : (double)val));
+        });
+        gLayout->addWidget(label); gLayout->addWidget(slider);
+    };
+
+    addGlobalSlider("Lock Power (Trava)", 100, 250, 160, &lock_power_global, true);
+    addGlobalSlider("Start Delay (Ticks)", 0, 15, 2, &start_delay_global);
+    addGlobalSlider("Força Magnetismo", 0, 2000, 750, &sticky_power_global);
+    addGlobalSlider("Anti-Deadzone", 0, 5000, 0, &anti_dz_global);
     mainLayout->addWidget(globalGroup);
 
-    // --- FUNÇÕES E MACROS ---
-    QGroupBox *macroGroup = new QGroupBox("MACROS", this);
-    QHBoxLayout *mLayout = new QHBoxLayout(macroGroup);
+    // --- 4. MACROS & FUNÇÕES ---
+    QGroupBox *macroGroup = new QGroupBox("MACROS & FUNÇÕES", this);
+    QGridLayout *mLayout = new QGridLayout(macroGroup);
+    QCheckBox *cb1 = new QCheckBox("CROUCH SPAM", this);
+    QCheckBox *cb2 = new QCheckBox("DROP SHOT", this);
+    QCheckBox *cb3 = new QCheckBox("STICKY AIM", this);
+    QCheckBox *cb4 = new QCheckBox("RAPID FIRE", this);
     
-    QCheckBox *cb_sticky = new QCheckBox("STICKY AIM", this);
-    QCheckBox *cb_rapid = new QCheckBox("RAPID FIRE", this);
-    
-    connect(cb_sticky, &QCheckBox::toggled, [](bool chk){ sticky_aim_global = chk; });
-    connect(cb_rapid, &QCheckBox::toggled, [](bool chk){ rapid_fire_global = chk; });
-    
-    mLayout->addWidget(cb_sticky);
-    mLayout->addWidget(cb_rapid);
+    connect(cb1, &QCheckBox::toggled, [](bool chk){ crouch_spam_global = chk; });
+    connect(cb2, &QCheckBox::toggled, [](bool chk){ drop_shot_global = chk; });
+    connect(cb3, &QCheckBox::toggled, [](bool chk){ sticky_aim_global = chk; });
+    connect(cb4, &QCheckBox::toggled, [](bool chk){ rapid_fire_global = chk; });
+
+    mLayout->addWidget(cb1, 0, 0); mLayout->addWidget(cb2, 0, 1);
+    mLayout->addWidget(cb3, 1, 0); mLayout->addWidget(cb4, 1, 1);
     mainLayout->addWidget(macroGroup);
 
     setCentralWidget(central);
-    resize(540, 950);
+    resize(540, 980);
     show();
-    
     session->Start();
 }
 
-// --- MÉTODOS DE SESSÃO ---
+// --- FUNÇÕES DE SISTEMA ---
 void StreamWindow::SessionQuit(ChiakiQuitReason r, const QString &s) { close(); }
 void StreamWindow::LoginPINRequested(bool i) {}
-void StreamWindow::OnNewWebConnection() {}
-void StreamWindow::ToggleFullscreen() { 
-    if(isFullScreen()) showNormal(); else showFullScreen(); 
-}
-
-// --- EVENTOS DE INPUT (TECLADO E MOUSE) ---
+void StreamWindow::ToggleFullscreen() { if(isFullScreen()) showNormal(); else showFullScreen(); }
 void StreamWindow::keyPressEvent(QKeyEvent *e) { if(session) session->HandleKeyboardEvent(e); }
 void StreamWindow::keyReleaseEvent(QKeyEvent *e) { if(session) session->HandleKeyboardEvent(e); }
 void StreamWindow::mousePressEvent(QMouseEvent *e) { if(session) session->HandleMouseEvent(e); }
 void StreamWindow::mouseReleaseEvent(QMouseEvent *e) { if(session) session->HandleMouseEvent(e); }
 void StreamWindow::mouseDoubleClickEvent(QMouseEvent *e) { ToggleFullscreen(); }
-
-// --- EVENTOS DE JANELA ---
-void StreamWindow::closeEvent(QCloseEvent *e) { if(session) session->Stop(); QMainWindow::closeEvent(e); }
-void StreamWindow::moveEvent(QMoveEvent *e) { QMainWindow::moveEvent(e); }
-void StreamWindow::resizeEvent(QResizeEvent *e) { QMainWindow::resizeEvent(e); }
-void StreamWindow::changeEvent(QEvent *e) { QMainWindow::changeEvent(e); }
+void StreamWindow::closeEvent(QCloseEvent *e) { if(session) session->Stop(); }
