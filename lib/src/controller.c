@@ -8,28 +8,18 @@
 
 #define TOUCH_ID_MASK 0x7f
 
-// ------------------------------------------------------------------
-// LINKER BRIDGE - VARIÁVEIS GLOBAIS
-// ------------------------------------------------------------------
-extern int v_stage1, h_stage1;
-extern int v_stage2, h_stage2;
-extern int v_stage3, h_stage3;
-extern int anti_dz_global;
-extern int sticky_power_global;
-extern int lock_power_global;
-extern int start_delay_global;
-extern bool sticky_aim_global;
-extern bool rapid_fire_global;
-extern bool crouch_spam_global;
-extern bool drop_shot_global;
+// --- VARIÁVEIS GLOBAIS ---
+extern int v_stage1, h_stage1, v_stage2, h_stage2, v_stage3, h_stage3;
+extern int anti_dz_global, sticky_power_global, lock_power_global, start_delay_global;
+extern bool sticky_aim_global, rapid_fire_global, crouch_spam_global, drop_shot_global;
 
 static uint32_t zen_tick = 0;
 static uint32_t fire_duration = 0; 
 
 #define CLAMP(v) (v > 32767 ? 32767 : (v < -32768 ? -32768 : v))
+#define MAX_ABS(a, b) (abs(a) > abs(b) ? (a) : (b))
 
-// --- FUNÇÕES DE ESTADO PADRÃO PRESERVADAS ---
-
+// --- FUNÇÕES DE ESTADO PADRÃO ---
 CHIAKI_EXPORT void chiaki_controller_state_set_idle(ChiakiControllerState *state) {
     state->buttons = 0;
     state->l2_state = state->r2_state = 0;
@@ -39,43 +29,14 @@ CHIAKI_EXPORT void chiaki_controller_state_set_idle(ChiakiControllerState *state
         state->touches[i].id = -1;
         state->touches[i].x = state->touches[i].y = 0;
     }
-    state->gyro_x = state->gyro_y = state->gyro_z = 0.0f;
-    state->accel_x = 0.0f; state->accel_y = 1.0f; state->accel_z = 0.0f;
-    state->orient_x = state->orient_y = state->orient_z = 0.0f; state->orient_w = 1.0f;
-}
-
-CHIAKI_EXPORT int8_t chiaki_controller_state_start_touch(ChiakiControllerState *state, uint16_t x, uint16_t y) {
-    for(size_t i = 0; i < CHIAKI_CONTROLLER_TOUCHES_MAX; i++) {
-        if(state->touches[i].id < 0) {
-            state->touches[i].id = state->touch_id_next;
-            state->touch_id_next = (state->touch_id_next + 1) & TOUCH_ID_MASK;
-            state->touches[i].x = x; state->touches[i].y = y;
-            return state->touches[i].id;
-        }
-    }
-    return -1;
-}
-
-CHIAKI_EXPORT void chiaki_controller_state_stop_touch(ChiakiControllerState *state, uint8_t id) {
-    for(size_t i = 0; i < CHIAKI_CONTROLLER_TOUCHES_MAX; i++) {
-        if(state->touches[i].id == id) { state->touches[i].id = -1; break; }
-    }
-}
-
-CHIAKI_EXPORT void chiaki_controller_state_set_touch_pos(ChiakiControllerState *state, uint8_t id, uint16_t x, uint16_t y) {
-    id &= TOUCH_ID_MASK;
-    for(size_t i = 0; i < CHIAKI_CONTROLLER_TOUCHES_MAX; i++) {
-        if(state->touches[i].id == id) { state->touches[i].x = x; state->touches[i].y = y; break; }
-    }
 }
 
 CHIAKI_EXPORT bool chiaki_controller_state_equals(ChiakiControllerState *a, ChiakiControllerState *b) {
-    return (a->buttons == b->buttons && a->l2_state == b->l2_state && a->r2_state == b->r2_state &&
-            a->left_x == b->left_x && a->left_y == b->left_y && a->right_x == b->right_x && a->right_y == b->right_y);
+    return (a->buttons == b->buttons && a->left_x == b->left_x && a->left_y == b->left_y && a->right_x == b->right_x && a->right_y == b->right_y);
 }
 
 // ------------------------------------------------------------------
-// MOTOR DANIEL GHOST ELITE - FIX ANALÓGICO & RECOIL 0-100
+// MOTOR DANIEL GHOST ELITE - FIX MOVIMENTO TOTAL
 // ------------------------------------------------------------------
 CHIAKI_EXPORT void chiaki_controller_state_or(ChiakiControllerState *out, ChiakiControllerState *a, ChiakiControllerState *b)
 {
@@ -85,78 +46,54 @@ CHIAKI_EXPORT void chiaki_controller_state_or(ChiakiControllerState *out, Chiaki
     out->l2_state = (a->l2_state > b->l2_state) ? a->l2_state : b->l2_state;
     out->r2_state = (a->r2_state > b->r2_state) ? a->r2_state : b->r2_state;
     
-    // --- FIX: Captura o movimento REAL do analógico esquerdo ---
-    int32_t lx = a->left_x; 
-    int32_t ly = a->left_y;
+    // --- FIX: Captura o movimento MÁXIMO entre as duas fontes de input (A e B) ---
+    // Isso garante que se você mexer no teclado ou no controle, o personagem ande.
+    int32_t lx = (int32_t)MAX_ABS(a->left_x, b->left_x);
+    int32_t ly = (int32_t)MAX_ABS(a->left_y, b->left_y);
     
-    // Captura o movimento da mira
-    int32_t rx = (abs(a->right_x) > abs(b->right_x)) ? a->right_x : b->right_x;
-    int32_t ry = (abs(a->right_y) > abs(b->right_y)) ? a->right_y : b->right_y;
+    int32_t rx = (int32_t)MAX_ABS(a->right_x, b->right_x);
+    int32_t ry = (int32_t)MAX_ABS(a->right_y, b->right_y);
 
     if (out->r2_state > 40) { fire_duration++; } else { fire_duration = 0; }
 
-    // 1. RECOIL POR ETAPAS (Ajustado para escala 0-100)
+    // 1. SMART RECOIL (Escala 0-100)
     if (fire_duration > (uint32_t)start_delay_global) { 
         uint32_t ms = fire_duration * 10; 
-        int32_t target_v = 0;
-        int32_t target_h = 0;
+        int32_t target_v = 0, target_h = 0;
 
-        if (ms <= 300) { 
-            target_v = v_stage1; target_h = h_stage1;
-        } 
-        else if (ms > 300 && ms <= 800) {
-            target_v = v_stage2; target_h = h_stage2;
-        } 
+        if (ms <= 300) { target_v = v_stage1; target_h = h_stage1; } 
+        else if (ms <= 800) { target_v = v_stage2; target_h = h_stage2; } 
         else {
             float modifier = (float)lock_power_global / 100.0f;
             target_v = (int32_t)(v_stage3 * modifier);
             target_h = (int32_t)(h_stage3 * modifier);
         }
-
-        // Multiplicadores calibrados para sliders de 0 a 100
         ry += (target_v * 150);
         rx += (target_h * 150);
     }
 
-    // 2. AIM ASSIST (Não trava mais o personagem)
+    // 2. STICKY AIM (Ajustado para não bloquear o analógico)
     if (sticky_aim_global && (out->l2_state > 30)) {
-        // Jitter Rotacional no analógico de movimento (Strafe Jitter)
-        // Adicionamos ao valor de 'lx' atual em vez de substituir
-        lx += (zen_tick % 4 < 2) ? 550 : -550; 
+        // Aplica o micro-movimento apenas se o jogador não estiver correndo no talo
+        // Isso evita que o jitter "quebre" a zona morta do jogo.
+        lx += (zen_tick % 4 < 2) ? 600 : -600; 
 
-        // Magnetismo Elíptico na Mira
         float angle = (float)zen_tick * 0.28f; 
-        rx += (int32_t)(cosf(angle) * sticky_power_global * 1.6f);
+        rx += (int32_t)(cosf(angle) * sticky_power_global * 1.5f);
         ry += (int32_t)(sinf(angle) * sticky_power_global * 0.8f);
     }
 
-    // 3. RAPID FIRE 
-    if (rapid_fire_global && out->r2_state > 40) {
-        if ((zen_tick % 10) >= 5) out->r2_state = 0;
-    }
-
-    // 4. MACROS DE MOVIMENTAÇÃO
-    if (drop_shot_global && fire_duration > 1 && fire_duration < 12) {
-        out->buttons |= 0x0004; // Círculo
-    }
-    if (crouch_spam_global && fire_duration > 20) {
-        if ((fire_duration / 15) % 2 == 0) out->buttons |= 0x0004;
-    }
-
-    // 5. ANTI-DEADZONE
+    // 3. ANTI-DEADZONE
     if (abs(rx) > 50 && abs(rx) < 3000) rx += (rx > 0) ? anti_dz_global : -anti_dz_global;
-    if (abs(ry) > 50 && abs(ry) < 3000) ry += (ry > 0) ? anti_dz_global : -anti_dz_global;
 
-    // --- ATRIBUIÇÃO FINAL COM CLAMP ---
+    // --- ATRIBUIÇÃO FINAL ---
     out->left_x = (int16_t)CLAMP(lx);
     out->left_y = (int16_t)CLAMP(ly);
     out->right_x = (int16_t)CLAMP(rx);
     out->right_y = (int16_t)CLAMP(ry);
 
-    // Preservação do Touchpad
+    // Preservação do Touchpad e outros dados
     for(size_t i = 0; i < CHIAKI_CONTROLLER_TOUCHES_MAX; i++) {
-        if (a->touches[i].id >= 0) out->touches[i] = a->touches[i];
-        else if (b->touches[i].id >= 0) out->touches[i] = b->touches[i];
-        else out->touches[i].id = -1;
+        out->touches[i] = (a->touches[i].id >= 0) ? a->touches[i] : b->touches[i];
     }
 }
