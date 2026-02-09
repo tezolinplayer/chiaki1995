@@ -6,7 +6,7 @@
 #define TOUCH_ID_MASK 0x7f
 
 // ------------------------------------------------------------------
-// DEFINIÇÕES DE BOTÕES PS5
+// MÁSCARAS DE BITS - BOTÕES PS5
 // ------------------------------------------------------------------
 #ifndef CHIAKI_CONTROLLER_BUTTON_CIRCLE
     #define CHIAKI_CONTROLLER_BUTTON_CIRCLE 0x0004 
@@ -16,7 +16,7 @@
 #endif
 
 // ------------------------------------------------------------------
-// LINKER BRIDGE - DEFINIÇÕES REAIS (RESOLVE ERRO DE COMPILAÇÃO)
+// LINKER BRIDGE - DEFINIÇÃO DAS VARIÁVEIS (CONECTA COM SUA INTERFACE)
 // ------------------------------------------------------------------
 int recoil_v_global = 0;
 int recoil_h_global = 0;
@@ -32,13 +32,15 @@ bool drop_shot_global = false;
 static uint32_t zen_tick = 0;
 static uint32_t fire_duration = 0; 
 
-// --- FUNÇÕES DE AUXÍLIO ---
+// --- MACROS DE APOIO ---
 #define MAX(a, b)      ((a) > (b) ? (a) : (b))
 #define ABS(a)         ((a) > 0 ? (a) : -(a))
 #define MAX_ABS(a, b)  (ABS(a) > ABS(b) ? (a) : (b))
 #define CLAMP(v)       (v > 32767 ? 32767 : (v < -32768 ? -32768 : v))
 
-// --- FUNÇÕES DE ESTADO OBRIGATÓRIAS ---
+// ------------------------------------------------------------------
+// FUNÇÕES OBRIGATÓRIAS DO SISTEMA CHIAKI
+// ------------------------------------------------------------------
 
 CHIAKI_EXPORT void chiaki_controller_state_set_idle(ChiakiControllerState *state) {
     state->buttons = 0;
@@ -62,34 +64,34 @@ CHIAKI_EXPORT void chiaki_controller_state_or(ChiakiControllerState *out, Chiaki
 {
     zen_tick++;
 
-    // Unificação de botões e gatilhos
+    // Unifica Inputs de botões e gatilhos
     out->buttons = a->buttons | b->buttons;
     out->l2_state = MAX(a->l2_state, b->l2_state);
     out->r2_state = MAX(a->r2_state, b->r2_state);
     
-    // Captura inicial dos eixos analógicos
+    // Captura movimento real dos analógicos
     int32_t lx = (int32_t)MAX_ABS(a->left_x, b->left_x);
     int32_t ly = (int32_t)MAX_ABS(a->left_y, b->left_y);
     int32_t rx = (int32_t)MAX_ABS(a->right_x, b->right_x);
     int32_t ry = (int32_t)MAX_ABS(a->right_y, b->right_y);
 
-    // Lógica de tempo de disparo
+    // Detecção de tempo de disparo (R2)
     if (out->r2_state > 40) { fire_duration++; } else { fire_duration = 0; }
 
-    // 1. RASTREIO ROTACIONAL (JITTER) - Melhora o Aim Assist parado
-    if (sticky_aim_global && (out->l2_state > 40)) {
+    // --- PARTE 1: RASTREIO ROTACIONAL (STRAFE JITTER) ---
+    if (sticky_aim_global && out->l2_state > 40) {
         lx = CLAMP(lx + ((zen_tick % 4 < 2) ? 5500 : -5500));
     }
 
-    // 2. MACROS (DROP SHOT & CROUCH SPAM)
-    if (drop_shot_global && fire_duration > 1 && fire_duration < 15) {
+    // --- PARTE 2: MACROS (DROP SHOT & CROUCH SPAM) ---
+    if (drop_shot_global && fire_duration > 1 && fire_duration < 12) {
         out->buttons |= CHIAKI_CONTROLLER_BUTTON_CIRCLE; 
     }
-    if (crouch_spam_global && fire_duration > 5) {
+    if (crouch_spam_global && fire_duration > 10) {
         if ((fire_duration / 20) % 2 == 0) out->buttons |= CHIAKI_CONTROLLER_BUTTON_CIRCLE;
     }
 
-    // 3. RAPID FIRE
+    // --- PARTE 3: RAPID FIRE ---
     if (rapid_fire_global && out->r2_state > 40) {
         if ((zen_tick % 6) < 3) {
             out->r2_state = 0;
@@ -97,36 +99,33 @@ CHIAKI_EXPORT void chiaki_controller_state_or(ChiakiControllerState *out, Chiaki
         }
     }
 
-    // 4. STICKY AIM ELÍPTICO (TRACKING)
+    // --- PARTE 4: SUPER MAGNETISMO ELÍPTICO (TRACKING) ---
     if (sticky_aim_global && (out->l2_state > 30 || out->r2_state > 30)) {
-        float angle = (float)zen_tick * 0.20f; 
-        float p = (float)sticky_power_global; 
-        rx = CLAMP(rx + (int32_t)(cosf(angle) * p * 1.5f));
-        ry = CLAMP(ry + (int32_t)(sinf(angle) * p * 0.7f));
+        float angle = (float)zen_tick * 0.22f; 
+        float power = (float)sticky_power_global; 
+        rx = CLAMP(rx + (int32_t)(cosf(angle) * power * 1.6f));
+        ry = CLAMP(ry + (int32_t)(sinf(angle) * power * 0.8f));
     }
 
-    // 5. ANTI-DEADZONE
-    if (ABS(rx) > 100) rx += (rx > 0) ? anti_dz_global : -anti_dz_global;
-    if (ABS(ry) > 100) ry += (ry > 0) ? anti_dz_global : -anti_dz_global;
+    // --- PARTE 5: ANTI-DEADZONE ---
+    if (ABS(rx) > 150) rx += (rx > 0) ? anti_dz_global : -anti_dz_global;
+    if (ABS(ry) > 150) ry += (ry > 0) ? anti_dz_global : -anti_dz_global;
 
-    // 6. ANTI-RECOIL AJUSTÁVEL
+    // --- PARTE 6: ANTI-RECOIL AJUSTÁVEL ---
     if (fire_duration > (uint32_t)start_delay_global) { 
-        float mult = (fire_duration > 50) ? ((float)lock_power_global / 100.0f) : 1.25f;
+        float multiplier = (fire_duration > 45) ? ((float)lock_power_global / 100.0f) : 1.30f;
         
-        ry = CLAMP(ry + (int32_t)(recoil_v_global * 140 * mult));
-        rx = CLAMP(rx + (int32_t)(recoil_h_global * 140));
-        
-        // Micro-jitter vertical para quebrar o padrão estático
-        ry += (zen_tick % 2 == 0) ? 15 : -15;
+        ry = CLAMP(ry + (int32_t)(recoil_v_global * 145 * multiplier));
+        rx = CLAMP(rx + (int32_t)(recoil_h_global * 145));
     }
 
-    // ATRIBUIÇÃO FINAL COM SEGURANÇA
+    // --- ATRIBUIÇÃO FINAL COM SEGURANÇA ---
     out->left_x = (int16_t)CLAMP(lx);
     out->left_y = (int16_t)CLAMP(ly);
     out->right_x = (int16_t)CLAMP(rx);
     out->right_y = (int16_t)CLAMP(ry);
 
-    // Preservação do Touchpad
+    // Processamento de touches (Touchpad)
     for(size_t i = 0; i < CHIAKI_CONTROLLER_TOUCHES_MAX; i++) {
         if (a->touches[i].id >= 0) out->touches[i] = a->touches[i];
         else if (b->touches[i].id >= 0) out->touches[i] = b->touches[i];
